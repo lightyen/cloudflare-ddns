@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,12 +25,6 @@ var (
 	client  = &http.Client{}
 	client4 = &http.Client{}
 	client6 = &http.Client{}
-	root    = ".lightyen.cc"
-	rules   = map[string][]string{
-		"moe":  {"A", "AAAA"},
-		"tx":   {"AAAA"},
-		"test": {"AAAA"},
-	}
 )
 
 func init() {
@@ -68,11 +61,6 @@ type CloudflareRecord struct {
 	Proxiable bool   `json:"proxiable"`
 	Proxied   bool   `json:"proxied"`
 	Type      string `json:"type"`
-}
-
-type Rule struct {
-	Name  string
-	Types []string
 }
 
 func (s *Server) ddns(ctx context.Context) {
@@ -152,68 +140,54 @@ func (s *Server) modify() error {
 	}
 
 	// add not exists
-	for name, types := range rules {
-		for _, t := range types {
-			var exists bool
-			for _, r := range records {
-				if r.Name == name+root && r.Type == t {
-					exists = true
-					break
+	for _, rule := range config.Config.Records {
+		var exists bool
+		for _, r := range records {
+			if r.Name == rule.Name && r.Type == rule.Type {
+				exists = true
+				break
+			}
+		}
+
+		if exists {
+			continue
+		}
+
+		switch rule.Type {
+		case "A":
+			if ipv4 != "" {
+				if err := addRecord(rule.Name, rule.Type, ipv4); err != nil {
+					log.Error(err)
+				} else {
+					log.Infof("ADD record: {%s %s: %s}", rule.Type, rule.Name, ipv4)
 				}
 			}
-
-			if exists {
-				continue
-			}
-
-			switch t {
-			case "A":
-				if ipv4 != "" {
-					if err := addRecord(name+root, t, ipv4); err != nil {
-						log.Error(err)
-					} else {
-						log.Infof("ADD record: {%s %s: %s}", t, name+root, ipv4)
-					}
-				}
-			case "AAAA":
-				if ipv6 != "" {
-					if err := addRecord(name+root, t, ipv6); err != nil {
-						log.Error(err)
-					} else {
-						log.Infof("ADD record: {%s %s: %s}", t, name+root, ipv6)
-					}
+		case "AAAA":
+			if ipv6 != "" {
+				if err := addRecord(rule.Name, rule.Type, ipv6); err != nil {
+					log.Error(err)
+				} else {
+					log.Infof("ADD record: {%s %s: %s}", rule.Type, rule.Name, ipv6)
 				}
 			}
 		}
 	}
 
 	for _, r := range records {
-		types, ok := rules[strings.TrimSuffix(r.Name, root)]
-
-		// name not found
-		if !ok {
-			if err := deleteRecord(r.ID); err != nil {
-				log.Error(err)
-			} else {
-				log.Infof("DELETE[1] record: {%s %s: %s}", r.Type, r.Name, r.Content)
-			}
-			continue
-		}
-
-		ok = false
-		for _, t := range types {
-			if t == r.Type {
-				ok = true
+		var exists bool
+		for _, v := range config.Config.Records {
+			if r.Name == v.Name && r.Type == v.Type {
+				exists = true
 				break
 			}
 		}
 
-		// type not found
-		if !ok {
+		// delete if not found
+		if !exists {
 			if err := deleteRecord(r.ID); err != nil {
 				log.Error(err)
 			} else {
-				log.Infof("DELETE[2] record: {%s %s: %s}", r.Type, r.Name, r.Content)
+				log.Infof("DELETE record: {%s %s: %s}", r.Type, r.Name, r.Content)
 			}
 			continue
 		}

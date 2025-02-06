@@ -1,0 +1,7 @@
+{
+  "records": [
+    { "name": "a.ggggg.ai", "type": "A" },
+    { "name": "b.ggggg.ai", "type": "AAAA" },
+    { "name": "v.ggggg.ai", "type": "AAAA", "proxied": true }
+  ]
+}
