@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/lightyen/cloudflare-ddns/config"
 	"github.com/lightyen/cloudflare-ddns/server"
 	"github.com/lightyen/cloudflare-ddns/zok/log"
@@ -18,8 +16,6 @@ func main() {
 			panic(err)
 		}
 	}()
-	wd, _ := os.Getwd()
-	log.Info("Working Directory:", wd)
 	log.Info("Zone ID:", config.Config.ZoneID)
 	log.Info("Email:", config.Config.Email)
 	log.Info("Token:", config.Config.Token)

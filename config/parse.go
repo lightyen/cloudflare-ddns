@@ -22,13 +22,16 @@ var (
 )
 
 func Parse() error {
-	m, t := readConfigFile(configPath)
+	m, t, err := readConfigFile(configPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	return parse(m, t, &Config)
 }
 
 var configExts = []string{".json"}
 
-func readConfigFile(filename string) (config map[string]any, path string) {
+func readConfigFile(filename string) (config map[string]any, path string, err error) {
 	p := filepath.Clean(filename)
 	dir, name, ext := filepath.Dir(p), filepath.Base(p), filepath.Ext(p)
 	if len(name) > len(ext) {
@@ -51,14 +54,18 @@ func readConfigFile(filename string) (config map[string]any, path string) {
 		cfg := make(map[string]any)
 
 		switch ext {
+		case ".yml", ".yaml":
+			return make(map[string]any), "", errors.ErrUnsupported
 		case ".json":
 			if err := json.Unmarshal(buf[:n], &cfg); err == nil {
-				return cfg, target
+				return cfg, target, nil
+			} else if len(buf) < 1 || buf[0] == '{' {
+				return make(map[string]any), "", err
 			}
 		}
 	}
 
-	return make(map[string]any), ""
+	return make(map[string]any), "", os.ErrNotExist
 }
 
 func jsonTagKey(t reflect.StructTag) string {
