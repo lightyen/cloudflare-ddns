@@ -23,10 +23,11 @@ type Configuration struct {
 	WebRoot       string `json:"www" yaml:"www" default:"www"`
 	DataDirectory string `json:"data" yaml:"data" default:"data"`
 
-	Email   string   `json:"email" yaml:"email" usage:"User Email"`
-	Token   string   `json:"token" yaml:"token" usage:"API Token"`
-	ZoneID  string   `json:"zone" yaml:"zone" usage:"Zone ID"`
-	Records []Record `json:"records" yaml:"records"`
+	Email      string   `json:"email" yaml:"email" usage:"User Email"`
+	Token      string   `json:"token" yaml:"token" usage:"API Token"`
+	ZoneID     string   `json:"zone" yaml:"zone" usage:"Zone ID"`
+	Records    []Record `json:"records" yaml:"records"`
+	StaticIPv6 string   `json:"static_ipv6" yaml:"static_ipv6"`
 }
 
 func init() {
