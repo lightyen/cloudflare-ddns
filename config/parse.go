@@ -17,7 +17,8 @@ import (
 )
 
 var (
-	configPath = "config.json"
+	configPath      = "config.json"
+	ErrRecordFormat = errors.New("wrong record format")
 )
 
 func Parse() error {
@@ -80,6 +81,37 @@ func parse(config map[string]any, configPath string, val any) error {
 		switch field.Type.String() {
 		default:
 			return fmt.Errorf("Field %q type %s is not handled", name, field.Type.String())
+		case "[]config.Record":
+			// read config only
+			var v []Record
+			if s, exists := config[name]; exists {
+				arr, ok := s.([]any)
+				if !ok {
+					return ErrRecordFormat
+				}
+				for _, m := range arr {
+					data, ok := m.(map[string]any)
+					if !ok {
+						return ErrRecordFormat
+					}
+					name, _ := (data["name"]).(string)
+					typ, _ := (data["type"]).(string)
+					var proxied bool
+					vProxied, exists := data["proxied"]
+					if exists {
+						proxied, ok = (vProxied).(bool)
+						if !ok {
+							return ErrRecordFormat
+						}
+					}
+					if name == "" || (typ != "A" && typ != "AAAA") {
+						return ErrRecordFormat
+					}
+					v = append(v, Record{Name: name, Type: typ, Proxied: proxied})
+				}
+				flagValues[name] = &v
+			}
+
 		case "string":
 			var v string
 			var d = defaultValue
