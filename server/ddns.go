@@ -83,6 +83,17 @@ func (s *Server) ddns(ctx context.Context) {
 	}
 }
 
+func OutboundIPv6() (string, error) {
+	conn, err := net.Dial("udp6", "[2606:4700:4700::1111]:53")
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String(), nil
+}
+
 func GetInternetAddrs() (ipv4, ipv6 string, err error) {
 	// curl 'https://api.ipify.org'
 	// curl -6 'https://api64.ipify.org'
@@ -105,13 +116,13 @@ func GetInternetAddrs() (ipv4, ipv6 string, err error) {
 	}()
 
 	go func() {
-		var v Response
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := request(client6, ctx, "GET", "https://api64.ipify.org?format=json", &v, nil); err != nil {
-			// nothing
-		}
-		ipv6 = v.Content
+		// var v Response
+		// ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// defer cancel()
+		// if err := request(client6, ctx, "GET", "https://api64.ipify.org?format=json", &v, nil); err != nil {
+		// 	// nothing
+		// }
+		ipv6, _ = OutboundIPv6()
 		wg.Done()
 	}()
 
