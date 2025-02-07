@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -16,27 +17,40 @@ type Op uint
 
 const (
 	Create Op = 1 << iota
-	Modify
+	Write
 	Remove
 	Rename
+	CloseWrite
 	Chmod
 )
 
+func (o Op) Has(v Op) bool {
+	return o&v == v
+}
+
 func (o Op) String() string {
-	switch o {
-	case Create:
-		return "Create"
-	case Modify:
-		return "Modify"
-	case Remove:
-		return "Remove"
-	case Rename:
-		return "Rename"
-	case Chmod:
-		return "Chmod"
-	default:
-		return "Unknown"
+	b := strings.Builder{}
+
+	if o.Has(Create) {
+		b.WriteString("|Create")
 	}
+	if o.Has(Write) {
+		b.WriteString("|Write")
+	}
+	if o.Has(Remove) {
+		b.WriteString("|Remove")
+	}
+	if o.Has(Rename) {
+		b.WriteString("|Rename")
+	}
+	if o.Has(Chmod) {
+		b.WriteString("|Chmod")
+	}
+	if o.Has(CloseWrite) {
+		b.WriteString("|CloseWrite")
+	}
+
+	return b.String()[1:]
 }
 
 type INotify struct {
@@ -78,7 +92,7 @@ func (f *INotify) AddWatch(path string) error {
 	if exists {
 		return nil
 	}
-	w, err := syscall.InotifyAddWatch(f.fd, path, syscall.IN_MODIFY|syscall.IN_CREATE)
+	w, err := syscall.InotifyAddWatch(f.fd, path, syscall.IN_CLOSE_WRITE|syscall.IN_CREATE)
 	if err != nil {
 		return err
 	}
@@ -150,7 +164,10 @@ func newEvent(name string, event *syscall.InotifyEvent) (e InotifyEvent) {
 		e.Op |= Remove
 	}
 	if flag(syscall.IN_MODIFY) {
-		e.Op |= Modify
+		e.Op |= Write
+	}
+	if flag(syscall.IN_CLOSE_WRITE) {
+		e.Op |= CloseWrite
 	}
 	if flag(syscall.IN_MOVE_SELF) || flag(syscall.IN_MOVED_FROM) {
 		e.Op |= Rename
