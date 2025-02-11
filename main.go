@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -41,7 +42,7 @@ func main() {
 
 	go f.Watch(ch)
 
-	if err := f.AddWatch("."); err != nil {
+	if err := f.AddWatch(filepath.Dir(config.ConfigPath)); err != nil {
 		log.Error(err)
 		return
 	}
