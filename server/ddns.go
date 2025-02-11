@@ -76,14 +76,14 @@ func (s *Server) ddns(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-s.apply:
-			if err := s.modify(); err != nil {
+			if err := s.modify(ctx); err != nil {
 				log.Error(err)
 			}
 		}
 	}
 }
 
-func GetInternetAddrs() (ipv4, ipv6 string, err error) {
+func GetInternetAddrs(ctx context.Context) (ipv4, ipv6 string, err error) {
 	// curl 'https://api.ipify.org'
 	// curl -6 'https://api64.ipify.org'
 	type Response struct {
@@ -97,9 +97,9 @@ func GetInternetAddrs() (ipv4, ipv6 string, err error) {
 		defer wg.Done()
 
 		var v Response
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		if err := request(client4, ctx, "GET", "https://api.ipify.org?format=json", &v, nil); err != nil {
+		if err := request(ctx, client4, "GET", "https://api.ipify.org?format=json", &v, nil); err != nil {
 			// nothing
 		}
 		ipv4 = v.Content
@@ -107,8 +107,8 @@ func GetInternetAddrs() (ipv4, ipv6 string, err error) {
 
 	go func() {
 		defer wg.Done()
-		if config.Config.StaticIPv6 != "" {
-			ipv6 = config.Config.StaticIPv6
+		if config.Config().StaticIPv6 != "" {
+			ipv6 = config.Config().StaticIPv6
 			return
 		}
 		ipv6, _ = OutboundIPv6()
@@ -123,8 +123,8 @@ func GetInternetAddrs() (ipv4, ipv6 string, err error) {
 	return
 }
 
-func (s *Server) modify() error {
-	ipv4, ipv6, err := GetInternetAddrs()
+func (s *Server) modify(ctx context.Context) error {
+	ipv4, ipv6, err := GetInternetAddrs(ctx)
 	if err != nil {
 		return err
 	}
@@ -133,13 +133,13 @@ func (s *Server) modify() error {
 		log.Warn("Internet v6 not found.")
 	}
 
-	records, err := getRecords()
+	records, err := getRecords(ctx)
 	if err != nil {
 		return err
 	}
 
 	// add not exists
-	for _, rule := range config.Config.Records {
+	for _, rule := range config.Config().Records {
 		var exists bool
 		for _, r := range records {
 			if r.Name == rule.Name && r.Type == rule.Type {
@@ -155,7 +155,7 @@ func (s *Server) modify() error {
 		switch rule.Type {
 		case "A":
 			if ipv4 != "" {
-				if err := addRecord(rule.Name, rule.Type, ipv4); err != nil {
+				if err := addRecord(ctx, rule.Name, rule.Type, ipv4); err != nil {
 					log.Error(err)
 				} else {
 					log.Infof("ADD record: {%s %s: %s}", rule.Type, rule.Name, ipv4)
@@ -163,7 +163,7 @@ func (s *Server) modify() error {
 			}
 		case "AAAA":
 			if ipv6 != "" {
-				if err := addRecord(rule.Name, rule.Type, ipv6); err != nil {
+				if err := addRecord(ctx, rule.Name, rule.Type, ipv6); err != nil {
 					log.Error(err)
 				} else {
 					log.Infof("ADD record: {%s %s: %s}", rule.Type, rule.Name, ipv6)
@@ -174,7 +174,7 @@ func (s *Server) modify() error {
 
 	for _, r := range records {
 		var exists bool
-		for _, v := range config.Config.Records {
+		for _, v := range config.Config().Records {
 			if r.Name == v.Name && r.Type == v.Type {
 				exists = true
 				break
@@ -183,7 +183,7 @@ func (s *Server) modify() error {
 
 		// delete if not found
 		if !exists {
-			if err := deleteRecord(r.ID); err != nil {
+			if err := deleteRecord(ctx, r.ID); err != nil {
 				log.Error(err)
 			} else {
 				log.Infof("DELETE record: {%s %s: %s}", r.Type, r.Name, r.Content)
@@ -195,7 +195,7 @@ func (s *Server) modify() error {
 		switch r.Type {
 		case "A":
 			if ipv4 != "" && r.Content != ipv4 {
-				if err := patchRecord(r, ipv4); err != nil {
+				if err := patchRecord(ctx, r, ipv4); err != nil {
 					log.Error(err)
 				} else {
 					log.Infof("PATCH record: {%s %s: %s}", r.Type, r.Name, ipv4)
@@ -203,7 +203,7 @@ func (s *Server) modify() error {
 			}
 		case "AAAA":
 			if ipv6 != "" && r.Content != ipv6 {
-				if err := patchRecord(r, ipv6); err != nil {
+				if err := patchRecord(ctx, r, ipv6); err != nil {
 					log.Error(err)
 				} else {
 					log.Infof("PATCH record: {%s %s: %s}", r.Type, r.Name, ipv6)
@@ -216,13 +216,13 @@ func (s *Server) modify() error {
 }
 
 func RequestCloudflare(ctx context.Context, method, path string, body io.Reader, resData any) error {
-	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s", config.Config.ZoneID)+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s", config.Config().ZoneID)+path, body)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("X-Auth-Email", config.Config.Email)
-	req.Header.Set("X-Auth-Key", config.Config.Token)
+	req.Header.Set("X-Auth-Email", config.Config().Email)
+	req.Header.Set("X-Auth-Key", config.Config().Token)
 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -267,7 +267,7 @@ func RequestCloudflare(ctx context.Context, method, path string, body io.Reader,
 	return fmt.Errorf("cloudflare: %s %s %s", "Unknown Error", req.Method, req.URL)
 }
 
-func request(client *http.Client, ctx context.Context, method, url string, resData any, body io.Reader) error {
+func request(ctx context.Context, client *http.Client, method, url string, resData any, body io.Reader) error {
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return err
@@ -294,7 +294,7 @@ func request(client *http.Client, ctx context.Context, method, url string, resDa
 	return json.Unmarshal(buf.Bytes(), resData)
 }
 
-func addRecord(fullName string, typ string, ip string) error {
+func addRecord(ctx context.Context, fullName string, typ string, ip string) error {
 	type Record struct {
 		Name    string `json:"name"`
 		Content string `json:"content"`
@@ -312,10 +312,10 @@ func addRecord(fullName string, typ string, ip string) error {
 		return err
 	}
 
-	return RequestCloudflare(context.Background(), "POST", "/dns_records", bytes.NewBuffer(b), nil)
+	return RequestCloudflare(ctx, "POST", "/dns_records", bytes.NewBuffer(b), nil)
 }
 
-func patchRecord(record CloudflareRecord, ip string) error {
+func patchRecord(ctx context.Context, record CloudflareRecord, ip string) error {
 	type Record struct {
 		Name    string `json:"name"`
 		Content string `json:"content"`
@@ -333,20 +333,20 @@ func patchRecord(record CloudflareRecord, ip string) error {
 		return err
 	}
 
-	return RequestCloudflare(context.Background(), "PATCH", "/dns_records/"+record.ID, bytes.NewBuffer(b), nil)
+	return RequestCloudflare(ctx, "PATCH", "/dns_records/"+record.ID, bytes.NewBuffer(b), nil)
 }
 
-func deleteRecord(id string) error {
-	return RequestCloudflare(context.Background(), "DELETE", fmt.Sprintf("/dns_records/%s", id), nil, nil)
+func deleteRecord(ctx context.Context, id string) error {
+	return RequestCloudflare(ctx, "DELETE", fmt.Sprintf("/dns_records/%s", id), nil, nil)
 }
 
-func getRecords() ([]CloudflareRecord, error) {
+func getRecords(ctx context.Context) ([]CloudflareRecord, error) {
 	var result struct {
 		Data    []CloudflareRecord `json:"result"`
 		Errors  []CloudflareError  `json:"errors"`
 		Success bool               `json:"success"`
 	}
-	if err := RequestCloudflare(context.Background(), "GET", "/dns_records", nil, &result); err != nil {
+	if err := RequestCloudflare(ctx, "GET", "/dns_records", nil, &result); err != nil {
 		return nil, err
 	}
 	return result.Data, nil

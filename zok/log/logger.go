@@ -6,19 +6,27 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/lightyen/cloudflare-ddns/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-const Filename = "logs/app.log"
+const DefaultLogName = "logs/messages.log"
 
 var (
-	opts   Options
-	logger *zap.Logger
-	sugar  *zap.SugaredLogger
-	w      *LogrotateWriter
+	LogLevel zapcore.Level
+
+	filename string
+	opts     Options
+	logger   *zap.Logger
+	sugar    *zap.SugaredLogger
+	w        *LogrotateWriter
 )
+
+func init() {
+	if v, exists := os.LookupEnv("LOG_LEVEL"); exists {
+		_ = LogLevel.Set(v)
+	}
+}
 
 type LogEntry struct {
 	Level   zapcore.Level `json:"level"`
@@ -50,17 +58,19 @@ const (
 )
 
 type Options struct {
-	Mode Mode
+	Mode     Mode
+	Filename string
 }
 
 func Open(options Options) {
 	opts = options
+	filename = opts.Filename
 
 	var err error
 
 	if options.Mode == Stdout {
 		c := zap.NewProductionConfig()
-		c.Level = zap.NewAtomicLevelAt(config.LogLevel)
+		c.Level = zap.NewAtomicLevelAt(LogLevel)
 		c.OutputPaths = []string{"stdout"}
 		c.Encoding = "console"
 		c.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
@@ -77,7 +87,7 @@ func Open(options Options) {
 
 	if options.Mode == Both {
 		w = NewLogrotateWriter(LogrotateOption{
-			Filename:   filepath.Join(config.Config.DataDirectory, Filename),
+			Filename:   filepath.Join(filepath.Clean(filename)),
 			MaxSize:    4 << 20,
 			MaxBackups: 6,
 			Compress:   true,
@@ -89,7 +99,7 @@ func Open(options Options) {
 		}
 	} else {
 		w = NewLogrotateWriter(LogrotateOption{
-			Filename:   filepath.Join(config.Config.DataDirectory, Filename),
+			Filename:   filepath.Join(filepath.Clean(filename)),
 			MaxSize:    4 << 20,
 			MaxBackups: 6,
 			Compress:   true,
@@ -101,7 +111,7 @@ func Open(options Options) {
 	encoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
 	enc, ws := zapcore.NewJSONEncoder(encoderConfig), zapcore.AddSync(iw)
 
-	v := zap.New(zapcore.NewCore(enc, ws, config.LogLevel))
+	v := zap.New(zapcore.NewCore(enc, ws, LogLevel))
 	logger = v
 	sugar = v.Sugar()
 }
@@ -116,6 +126,10 @@ func Close() (err error) {
 		}
 	}
 	return
+}
+
+func Filename() string {
+	return filename
 }
 
 func Rotate() error {
