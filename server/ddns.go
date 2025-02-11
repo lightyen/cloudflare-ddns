@@ -140,7 +140,7 @@ func (s *Server) modify() error {
 	}
 
 	// add not exists
-	for _, rule := range config.Config.Records {
+	for _, rule := range config.Config().Records {
 		var exists bool
 		for _, r := range records {
 			if r.Name == rule.Name && r.Type == rule.Type {
@@ -175,7 +175,7 @@ func (s *Server) modify() error {
 
 	for _, r := range records {
 		var exists bool
-		for _, v := range config.Config.Records {
+		for _, v := range config.Config().Records {
 			if r.Name == v.Name && r.Type == v.Type {
 				exists = true
 				break
@@ -217,13 +217,13 @@ func (s *Server) modify() error {
 }
 
 func RequestCloudflare(ctx context.Context, method, path string, body io.Reader, resData any) error {
-	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s", config.Config.ZoneID)+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s", config.Config().ZoneID)+path, body)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("X-Auth-Email", config.Config.Email)
-	req.Header.Set("X-Auth-Key", config.Config.Token)
+	req.Header.Set("X-Auth-Email", config.Config().Email)
+	req.Header.Set("X-Auth-Key", config.Config().Token)
 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")

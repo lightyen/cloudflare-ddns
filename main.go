@@ -1,210 +1,95 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"os"
-	"strings"
-	"syscall"
+	"fmt"
+	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/lightyen/cloudflare-ddns/config"
+	"github.com/lightyen/cloudflare-ddns/server"
 	"github.com/lightyen/cloudflare-ddns/zok"
 	"github.com/lightyen/cloudflare-ddns/zok/log"
 )
 
-type Op uint
+var (
+	ErrExit          = errors.New("exit")
+	ErrConfigChanged = errors.New("config changed")
 
-const (
-	Create Op = 1 << iota
-	Write
-	Remove
-	Rename
-	CloseWrite
-	Chmod
+	mu          = &sync.RWMutex{}
+	ctx, cancel = context.WithCancelCause(context.Background())
 )
 
-func (o Op) Has(v Op) bool {
-	return o&v == v
-}
-
-func (o Op) String() string {
-	b := strings.Builder{}
-
-	if o.Has(Create) {
-		b.WriteString("|Create")
-	}
-	if o.Has(Write) {
-		b.WriteString("|Write")
-	}
-	if o.Has(Remove) {
-		b.WriteString("|Remove")
-	}
-	if o.Has(Rename) {
-		b.WriteString("|Rename")
-	}
-	if o.Has(Chmod) {
-		b.WriteString("|Chmod")
-	}
-	if o.Has(CloseWrite) {
-		b.WriteString("|CloseWrite")
-	}
-
-	return b.String()[1:]
-}
-
-type INotify struct {
-	fd   int
-	file *os.File
-
-	watchdesc map[int]string
-	wd        map[string]int
-}
-
-func NewINotify() *INotify {
-	return &INotify{
-		watchdesc: map[int]string{},
-		wd:        map[string]int{},
-	}
-}
-
-func (f *INotify) Open() (err error) {
-	f.fd, err = syscall.InotifyInit1(0)
-	if err != nil {
-		return err
-	}
-	f.file = os.NewFile(uintptr(f.fd), "")
-	go f.readEvents()
-	return nil
-}
-
-func (f *INotify) Close() error {
-	for w := range f.watchdesc {
-		syscall.InotifyRmWatch(f.fd, uint32(w))
-	}
-	f.watchdesc = map[int]string{}
-	f.wd = map[string]int{}
-	return syscall.Close(f.fd)
-}
-
-func (f *INotify) AddWatch(path string) error {
-	_, exists := f.wd[path]
-	if exists {
-		return nil
-	}
-	w, err := syscall.InotifyAddWatch(f.fd, path, syscall.IN_CLOSE_WRITE|syscall.IN_CREATE)
-	if err != nil {
-		return err
-	}
-	f.wd[path] = w
-	f.watchdesc[w] = path
-	return nil
-}
-
-func (f *INotify) readEvents() {
-	buf := make([]byte, syscall.SizeofInotifyEvent<<12)
-	for {
-		n, err := f.file.Read(buf)
-		switch {
-		case errors.Is(err, os.ErrClosed):
-			return
-		case err != nil:
-			log.Error(err)
-			continue
-		}
-
-		if n < syscall.SizeofInotifyEvent {
-			continue
-		}
-
-		var offset int
-
-		for offset <= (n - syscall.SizeofInotifyEvent) {
-			var name string
-			p := (*syscall.InotifyEvent)(unsafe.Pointer(&buf[offset]))
-
-			if p.Mask&syscall.IN_IGNORED == syscall.IN_IGNORED {
-				offset += int(syscall.SizeofInotifyEvent + p.Len)
-				continue
-			}
-
-			if p.Len > 0 {
-				b := (*[syscall.PathMax]byte)(unsafe.Pointer(&buf[offset+syscall.SizeofInotifyEvent]))
-				name = string(b[0:p.Len])
-			}
-
-			e := newEvent(name, p)
-
-			log.Info(time.Now(), e, f.watchdesc[int(p.Wd)], p)
-
-			offset += int(syscall.SizeofInotifyEvent + p.Len)
-		}
-
-	}
-}
-
-type InotifyEvent struct {
-	Name string
-	Len  uint32
-	Op   Op
-}
-
-func newEvent(name string, event *syscall.InotifyEvent) (e InotifyEvent) {
-	e.Name = name
-	e.Len = event.Len
-
-	flag := func(v uint32) bool {
-		return event.Mask&v == v
-	}
-
-	if flag(syscall.IN_CREATE) || flag(syscall.IN_MOVED_TO) {
-		e.Op |= Create
-	}
-	if flag(syscall.IN_DELETE_SELF) || flag(syscall.IN_DELETE) {
-		e.Op |= Remove
-	}
-	if flag(syscall.IN_MODIFY) {
-		e.Op |= Write
-	}
-	if flag(syscall.IN_CLOSE_WRITE) {
-		e.Op |= CloseWrite
-	}
-	if flag(syscall.IN_MOVE_SELF) || flag(syscall.IN_MOVED_FROM) {
-		e.Op |= Rename
-	}
-	if flag(syscall.IN_ATTRIB) {
-		e.Op |= Chmod
-	}
-	return
-}
-
 func main() {
-	if err := config.Parse(); err != nil {
-		panic(err)
-	}
 	log.Open(log.Options{Mode: "stdout"})
 	defer func() {
 		if err := log.Close(); err != nil {
 			panic(err)
 		}
 	}()
-	log.Info("Zone ID:", config.Config.ZoneID)
-	log.Info("Email:", config.Config.Email)
-	log.Info("Token:", config.Config.Token)
-	// server.New().Run()
+
+	var ch = make(chan InotifyEvent, 1)
+	var changed = make(chan struct{}, 1)
 
 	f := NewINotify()
-
 	if err := f.Open(); err != nil {
 		log.Error(err)
 		return
 	}
 	defer f.Close()
 
-	if err := f.AddWatch("config.json"); err != nil {
+	go f.Watch(ch)
+
+	if err := f.AddWatch("."); err != nil {
 		log.Error(err)
 		return
 	}
 
-	<-zok.Exit()
+	go func() {
+		for e := range ch {
+			if e.Name == "config.json" {
+				changed <- struct{}{}
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case sig := <-zok.Exit():
+				mu.RLock()
+				cancel(fmt.Errorf("%w (signal: %s)", ErrExit, sig))
+				mu.RUnlock()
+				return
+			case <-changed:
+				mu.RLock()
+				cancel(ErrConfigChanged)
+				mu.RUnlock()
+			}
+		}
+	}()
+
+	for run() {
+		time.Sleep(1000 * time.Millisecond)
+	}
+}
+
+func run() bool {
+	if err := config.Load(); err != nil {
+		log.Error(err)
+	}
+
+	srv := server.New()
+	srv.Run(ctx)
+
+	if errors.Is(context.Cause(ctx), ErrExit) {
+		return false
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	ctx, cancel = context.WithCancelCause(context.Background())
+
+	return true
 }
