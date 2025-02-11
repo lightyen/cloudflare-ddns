@@ -13,7 +13,7 @@ import (
 )
 
 func (s *Server) GetLogs(c *gin.Context) {
-	filename := filepath.Join(config.Config().DataDirectory, log.DefaultLogName)
+	filename := filepath.Join(config.Config().DataDirectory, log.Filename())
 	f, err := os.Open(filename)
 	if err != nil {
 		return
