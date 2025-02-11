@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-const DefaultLogName = "app.log"
+const DefaultLogName = "logs/messages.log"
 
 var (
 	LogLevel zapcore.Level

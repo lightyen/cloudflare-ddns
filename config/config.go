@@ -6,7 +6,7 @@ import (
 
 var (
 	Version       string
-	ConfigPath    = "config.json"
+	ConfigPath    = "config/config.json"
 	DefaultConfig = Configuration{
 		ServerPort:    37211,
 		WebRoot:       "www",
