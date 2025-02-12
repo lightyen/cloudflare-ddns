@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 type Server struct {
 	srv  *http.Server
 	ctx  context.Context
-	stop context.CancelFunc
+	stop context.CancelCauseFunc
 
 	apply chan struct{}
 }
@@ -31,7 +30,7 @@ func New() *Server {
 }
 
 func (s *Server) init() (err error) {
-	go s.ddns(s.ctx)
+	// go s.ddns(s.ctx)
 	s.buildRouter()
 	return nil
 }
@@ -39,17 +38,17 @@ func (s *Server) init() (err error) {
 func (s *Server) Run(ctx context.Context) error {
 	log.Info("server startup...")
 
-	s.ctx, s.stop = context.WithCancel(ctx)
-	defer s.stop()
+	s.ctx, s.stop = context.WithCancelCause(ctx)
+	defer s.stop(nil)
 
 	if err := s.init(); err != nil {
-		log.Error(err)
-		s.stop()
+		s.stop(errors.New("init failed"))
+		return err
 	}
 
 	go func() {
 		<-s.ctx.Done()
-		log.Info("server shutdown because:", context.Cause(s.ctx).Error())
+		log.Info("server stop because:", context.Cause(s.ctx).Error())
 		_ = s.srv.Shutdown(s.ctx)
 	}()
 
@@ -66,14 +65,13 @@ func (s *Server) Run(ctx context.Context) error {
 			return err
 		}
 
-		var err2 *os.SyscallError
-		if errors.As(err, &err2) { // like: errors.Is(err, syscall.EADDRINUSE)
-			log.Error(err)
-			s.stop()
-			return err
-		}
+		// var err2 *os.SyscallError
+		// if errors.As(err, &err2) { // like: errors.Is(err, syscall.EADDRINUSE)
+		// 	s.stop(err)
+		// 	return err
+		// }
 
-		log.Warn("server:", err)
-		time.Sleep(1000 * time.Millisecond)
+		log.Warn("server listen:", err)
+		time.Sleep(time.Second)
 	}
 }

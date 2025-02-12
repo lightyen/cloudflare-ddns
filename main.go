@@ -42,16 +42,53 @@ func main() {
 
 	go f.Watch(ch)
 
-	if err := f.AddWatch(filepath.Dir(config.ConfigPath)); err != nil {
+	if err := f.AddWatch(filepath.Dir(config.ConfigPath), Remove|Rename|Create|CloseWrite); err != nil {
 		log.Error(err)
 		return
+		// if !errors.Is(err, fs.ErrNotExist) {
+		// 	log.Error(err)
+		// 	return
+		// }
+
+		// _ = config.NewFile()
+		// if err := f.AddWatch(filepath.Dir(config.ConfigPath), Remove|Rename|Create|CloseWrite); err != nil {
+		// 	log.Error(err)
+		// 	return
+		// }
 	}
 
 	go func() {
+		duration := time.Second
+		var ctx context.Context
+		var cancel context.CancelFunc
+
 		for e := range ch {
-			if e.Name == "config.json" {
-				changed <- struct{}{}
+			name := e.Name
+			if name == "" {
+				name = filepath.Base(e.Path)
 			}
+
+			if name != filepath.Base(config.ConfigPath) {
+				continue
+			}
+
+			if cancel != nil {
+				cancel()
+			}
+
+			// debounce
+			ctx, cancel = context.WithTimeout(context.Background(), duration)
+			defer cancel()
+
+			go func(ctx context.Context) {
+				time.Sleep(duration)
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				changed <- struct{}{}
+			}(ctx)
 		}
 	}()
 
@@ -59,38 +96,43 @@ func main() {
 		for {
 			select {
 			case sig := <-zok.Exit():
-				mu.RLock()
+				mu.Lock()
 				cancel(fmt.Errorf("%w (signal: %s)", ErrExit, sig))
-				mu.RUnlock()
+				ctx, cancel = context.WithCancelCause(context.Background())
+				mu.Unlock()
 				return
 			case <-changed:
-				mu.RLock()
-				cancel(ErrConfigChanged)
-				mu.RUnlock()
+				if !config.Equal() {
+					mu.Lock()
+					cancel(ErrConfigChanged)
+					ctx, cancel = context.WithCancelCause(context.Background())
+					mu.Unlock()
+				}
 			}
 		}
 	}()
 
 	for run() {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(time.Second)
 	}
 }
 
 func run() bool {
+	var c context.Context
+	mu.RLock()
+	c = ctx
+	mu.RUnlock()
+
 	if err := config.Load(); err != nil {
 		log.Error(err)
 	}
 
 	srv := server.New()
-	srv.Run(ctx)
+	srv.Run(c)
 
-	if errors.Is(context.Cause(ctx), ErrExit) {
+	if errors.Is(context.Cause(c), ErrExit) {
 		return false
 	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	ctx, cancel = context.WithCancelCause(context.Background())
 
 	return true
 }

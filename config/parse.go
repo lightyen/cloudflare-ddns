@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -22,14 +23,20 @@ func Config() Configuration {
 	return configuration.Load().(Configuration)
 }
 
+func Equal() bool {
+	m, _, _ := readConfigFile(ConfigPath)
+	current := configuration.Load().(Configuration)
+	data1, _ := json.Marshal(m)
+	data2, _ := json.Marshal(current)
+	return bytes.Equal(data1, data2)
+}
+
 func Load() error {
 	ConfigPath = filepath.Clean(ConfigPath)
 	m, _, err := readConfigFile(ConfigPath)
 
 	if errors.Is(err, fs.ErrNotExist) {
 		// m = DefaultConfig
-		// data, _ := json.MarshalIndent(m, "", "  ")
-		// os.WriteFile(ConfigPath, data, 0600)
 	} else if err != nil {
 		log.Warn("read config file:", err)
 	}

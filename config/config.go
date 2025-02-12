@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 )
 
@@ -20,4 +21,12 @@ func init() {
 			ConfigPath = v
 		}
 	}
+}
+
+func NewFile() error {
+	data, err := json.MarshalIndent(DefaultConfig, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(ConfigPath, data, 0644)
 }
