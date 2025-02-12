@@ -27,8 +27,8 @@ func New() *Server {
 	}
 }
 
-func (s *Server) init() (err error) {
-	// go s.ddns(s.ctx)
+func (s *Server) init(ctx context.Context) (err error) {
+	go s.ddns(ctx)
 	s.buildRouter()
 	return nil
 }
@@ -39,7 +39,7 @@ func (s *Server) Run(ctx context.Context) error {
 	ctx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
 
-	if err := s.init(); err != nil {
+	if err := s.init(ctx); err != nil {
 		stop(errors.New("init failed"))
 		return err
 	}
