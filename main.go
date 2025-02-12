@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/lightyen/cloudflare-ddns/config"
 	"github.com/lightyen/cloudflare-ddns/server"
-	"github.com/lightyen/cloudflare-ddns/zok"
 	"github.com/lightyen/cloudflare-ddns/zok/log"
 )
 
@@ -18,9 +20,21 @@ var (
 	ErrExit          = errors.New("exit")
 	ErrConfigChanged = errors.New("config changed")
 
-	mu          = &sync.RWMutex{}
-	ctx, cancel = context.WithCancelCause(context.Background())
+	mu              = &sync.RWMutex{}
+	appCtx, appExit = context.WithCancelCause(context.Background())
 )
+
+func AppCtx() context.Context {
+	mu.RLock()
+	defer mu.RUnlock()
+	return appCtx
+}
+
+func AppExit() context.CancelCauseFunc {
+	mu.RLock()
+	defer mu.RUnlock()
+	return appExit
+}
 
 func main() {
 	log.Open(log.Options{Mode: "stdout"})
@@ -40,25 +54,15 @@ func main() {
 	}
 	defer f.Close()
 
-	go f.Watch(ch)
-
 	if err := f.AddWatch(filepath.Dir(config.ConfigPath), Remove|Rename|Create|CloseWrite); err != nil {
 		log.Error(err)
 		return
-		// if !errors.Is(err, fs.ErrNotExist) {
-		// 	log.Error(err)
-		// 	return
-		// }
-
-		// _ = config.NewFile()
-		// if err := f.AddWatch(filepath.Dir(config.ConfigPath), Remove|Rename|Create|CloseWrite); err != nil {
-		// 	log.Error(err)
-		// 	return
-		// }
 	}
 
+	go f.Watch(ch)
+
 	go func() {
-		duration := time.Second
+		const duration = 100 * time.Millisecond
 		var ctx context.Context
 		var cancel context.CancelFunc
 
@@ -77,7 +81,7 @@ func main() {
 			}
 
 			// debounce
-			ctx, cancel = context.WithTimeout(context.Background(), duration)
+			ctx, cancel = context.WithTimeout(AppCtx(), duration)
 			defer cancel()
 
 			go func(ctx context.Context) {
@@ -95,44 +99,50 @@ func main() {
 	go func() {
 		for {
 			select {
-			case sig := <-zok.Exit():
-				mu.Lock()
-				cancel(fmt.Errorf("%w (signal: %s)", ErrExit, sig))
-				ctx, cancel = context.WithCancelCause(context.Background())
-				mu.Unlock()
+			case sig := <-Exit():
+				AppExit()(fmt.Errorf("%w (signal: %s)", ErrExit, sig))
 				return
 			case <-changed:
 				if !config.Equal() {
-					mu.Lock()
-					cancel(ErrConfigChanged)
-					ctx, cancel = context.WithCancelCause(context.Background())
-					mu.Unlock()
+					AppExit()(ErrConfigChanged)
 				}
 			}
 		}
 	}()
 
-	for run() {
+	for run(AppCtx()) {
+		mu.Lock()
+		appCtx, appExit = context.WithCancelCause(context.Background())
+		mu.Unlock()
 		time.Sleep(time.Second)
 	}
 }
 
-func run() bool {
-	var c context.Context
-	mu.RLock()
-	c = ctx
-	mu.RUnlock()
-
+func run(ctx context.Context) bool {
 	if err := config.Load(); err != nil {
 		log.Error(err)
 	}
 
 	srv := server.New()
-	srv.Run(c)
+	srv.Run(ctx)
 
-	if errors.Is(context.Cause(c), ErrExit) {
-		return false
+	restart := !errors.Is(context.Cause(ctx), ErrExit)
+
+	if restart {
+		log.Info("server restart because:", context.Cause(ctx).Error())
+	} else {
+		log.Error(context.Cause(ctx))
 	}
 
-	return true
+	return restart
+}
+
+func Exit() <-chan os.Signal {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop,
+		syscall.SIGTERM, // kill
+		syscall.SIGINT,  // Ctrl+C
+		syscall.SIGQUIT, // Ctrl+\
+	)
+	return stop
 }

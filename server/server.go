@@ -13,9 +13,7 @@ import (
 )
 
 type Server struct {
-	srv  *http.Server
-	ctx  context.Context
-	stop context.CancelCauseFunc
+	srv *http.Server
 
 	apply chan struct{}
 }
@@ -38,29 +36,32 @@ func (s *Server) init() (err error) {
 func (s *Server) Run(ctx context.Context) error {
 	log.Info("server startup...")
 
-	s.ctx, s.stop = context.WithCancelCause(ctx)
-	defer s.stop(nil)
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
 
 	if err := s.init(); err != nil {
-		s.stop(errors.New("init failed"))
+		stop(errors.New("init failed"))
 		return err
 	}
 
 	go func() {
-		<-s.ctx.Done()
-		log.Info("server stop because:", context.Cause(s.ctx).Error())
-		_ = s.srv.Shutdown(s.ctx)
+		<-ctx.Done()
+		_ = s.srv.Shutdown(ctx)
 	}()
 
 	for {
 		select {
 		default:
-		case <-s.ctx.Done():
-			return s.ctx.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 
-		log.Info("server listen:", s.srv.Addr)
-		err := s.srv.ListenAndServe()
+		ln, err := net.Listen("tcp", s.srv.Addr)
+		if err == nil {
+			log.Info("server listen:", s.srv.Addr)
+			err = s.srv.Serve(ln)
+		}
+
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
 			return err
 		}

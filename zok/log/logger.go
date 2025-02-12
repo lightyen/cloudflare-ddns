@@ -75,6 +75,7 @@ func Open(options Options) {
 		c.Encoding = "console"
 		c.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
 		c.EncoderConfig.CallerKey = zapcore.OmitKey
+		c.EncoderConfig.StacktraceKey = zapcore.OmitKey
 		logger, err = c.Build()
 		if err != nil {
 			panic(err)
@@ -109,6 +110,8 @@ func Open(options Options) {
 
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
+	encoderConfig.CallerKey = zapcore.OmitKey
+	encoderConfig.StacktraceKey = zapcore.OmitKey
 	enc, ws := zapcore.NewJSONEncoder(encoderConfig), zapcore.AddSync(iw)
 
 	v := zap.New(zapcore.NewCore(enc, ws, LogLevel))
