@@ -28,7 +28,7 @@ func New() *Server {
 }
 
 func (s *Server) init(ctx context.Context) (err error) {
-	go s.ddns(ctx)
+	// go s.ddns(ctx)
 	s.buildRouter()
 	return nil
 }

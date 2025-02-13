@@ -67,6 +67,7 @@ func main() {
 		var cancel context.CancelFunc
 
 		for e := range ch {
+			log.Debugf("inotify: %+v", e)
 			name := e.Name
 			if name == "" {
 				name = filepath.Base(e.Path)

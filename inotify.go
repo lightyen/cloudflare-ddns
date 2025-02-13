@@ -16,7 +16,7 @@ type Op uint32
 const (
 	Create     Op = syscall.IN_CREATE | syscall.IN_MOVED_TO
 	Remove     Op = syscall.IN_DELETE | syscall.IN_DELETE_SELF
-	Rename     Op = syscall.IN_MOVE_SELF | syscall.IN_MOVED_FROM
+	Rename     Op = syscall.IN_MOVED_FROM | syscall.IN_MOVE_SELF
 	CloseWrite Op = syscall.IN_CLOSE_WRITE
 	Modify     Op = syscall.IN_MODIFY
 	Chmod      Op = syscall.IN_ATTRIB
@@ -24,7 +24,7 @@ const (
 
 type InotifyEvent struct {
 	Len  uint32
-	Mask uint32
+	Mask Mask
 	Name string
 	Path string
 	Op   Op
@@ -42,26 +42,85 @@ func (o Op) String() string {
 	var b = &strings.Builder{}
 
 	if flag(o, Create) {
-		b.WriteString("|Create(IN_CREATE|IN_MOVED_TO)")
+		b.WriteString("|Create")
 	}
 	if flag(o, Remove) {
-		b.WriteString("|Remove(IN_DELETE|IN_DELETE_SELF)")
+		b.WriteString("|Remove")
 	}
 	if flag(o, Rename) {
-		b.WriteString("|Rename(IN_MOVE_SELF|IN_MOVED_FROM)")
+		b.WriteString("|Rename")
 	}
 	if flag(o, CloseWrite) {
-		b.WriteString("|CloseWrite(IN_CLOSE_WRITE)")
+		b.WriteString("|CloseWrite")
 	}
 	if flag(o, Modify) {
-		b.WriteString("|Write(IN_MODIFY)")
+		b.WriteString("|Write")
 	}
 	if flag(o, Chmod) {
-		b.WriteString("|Chmod(IN_ATTRIB)")
+		b.WriteString("|Chmod")
 	}
 
 	if b.Len() == 0 {
 		return fmt.Sprintf("Undefined(%d)", o)
+	}
+
+	return b.String()[1:]
+}
+
+type Mask uint32
+
+func (m Mask) String() string {
+	var b = &strings.Builder{}
+
+	if flag(m, syscall.IN_CREATE) {
+		b.WriteString("|IN_CREATE")
+	}
+	if flag(m, syscall.IN_DELETE) {
+		b.WriteString("|IN_DELETE")
+	}
+	if flag(m, syscall.IN_DELETE_SELF) {
+		b.WriteString("|IN_DELETE_SELF")
+	}
+	if flag(m, syscall.IN_MOVE_SELF) {
+		b.WriteString("|IN_MOVE_SELF")
+	}
+	if flag(m, syscall.IN_MOVED_TO) {
+		b.WriteString("|IN_MOVED_TO")
+	}
+	if flag(m, syscall.IN_MOVED_FROM) {
+		b.WriteString("|IN_MOVED_FROM")
+	}
+	if flag(m, syscall.IN_CLOSE_WRITE) {
+		b.WriteString("|IN_CLOSE_WRITE")
+	}
+	if flag(m, syscall.IN_CLOSE_NOWRITE) {
+		b.WriteString("|IN_CLOSE_NOWRITE")
+	}
+	if flag(m, syscall.IN_MODIFY) {
+		b.WriteString("|IN_MODIFY")
+	}
+	if flag(m, syscall.IN_ACCESS) {
+		b.WriteString("|IN_ACCESS")
+	}
+	if flag(m, syscall.IN_ATTRIB) {
+		b.WriteString("|IN_ATTRIB")
+	}
+
+	if flag(m, syscall.IN_IGNORED) {
+		b.WriteString("|IN_IGNORED")
+	}
+	if flag(m, syscall.IN_ISDIR) {
+		b.WriteString("|IN_ISDIR")
+	}
+	if flag(m, syscall.IN_Q_OVERFLOW) {
+		b.WriteString("|IN_Q_OVERFLOW")
+	}
+	if flag(m, syscall.IN_UNMOUNT) {
+		b.WriteString("|IN_UNMOUNT")
+	}
+
+	if b.Len() == 0 {
+		return fmt.Sprintf("Undefined(%d)", m)
 	}
 
 	return b.String()[1:]
@@ -193,7 +252,7 @@ func (f *INotify) Watch(ch chan<- InotifyEvent) {
 			f.watches.mu.RLock()
 			event := InotifyEvent{
 				Len:  e.Len,
-				Mask: e.Mask,
+				Mask: Mask(e.Mask),
 				Name: s.String(),
 				Path: f.watches.paths[int(e.Wd)],
 				Op:   maskToOp(e.Mask),
