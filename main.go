@@ -23,24 +23,21 @@ import (
 )
 
 var (
-	ErrExit          = errors.New("exit")
+	ErrTerminated    = errors.New("terminate by signal")
 	ErrConfigChanged = errors.New("config changed")
 
-	mu              = &sync.RWMutex{}
+	terminate = func() <-chan os.Signal {
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop,
+			syscall.SIGTERM, // kill
+			syscall.SIGINT,  // Ctrl+C
+			syscall.SIGQUIT, // Ctrl+\
+		)
+		return stop
+	}()
+
 	appCtx, appExit = context.WithCancelCause(context.Background())
 )
-
-func AppCtx() context.Context {
-	mu.RLock()
-	defer mu.RUnlock()
-	return appCtx
-}
-
-func AppExit() context.CancelCauseFunc {
-	mu.RLock()
-	defer mu.RUnlock()
-	return appExit
-}
 
 func write(h hash.Hash, filename string) {
 	f, err := os.Open(filename)
@@ -101,7 +98,7 @@ func main() {
 	go f.Watch(ch)
 
 	go func() {
-		const duration = 100 * time.Millisecond
+		const duration = 200 * time.Millisecond
 		var ctx context.Context
 		var cancel context.CancelFunc
 
@@ -121,7 +118,7 @@ func main() {
 			}
 
 			// debounce
-			ctx, cancel = context.WithTimeout(AppCtx(), duration)
+			ctx, cancel = context.WithTimeout(appCtx, duration)
 			defer cancel()
 
 			go func(ctx context.Context) {
@@ -136,64 +133,57 @@ func main() {
 		}
 	}()
 
-	go func() {
-		for {
-			select {
-			case sig := <-Exit():
-				AppExit()(fmt.Errorf("%w (signal: %s)", ErrExit, sig))
-				return
-			case <-changed:
-				if err := config.Load(); err != nil && errors.Is(err, fs.ErrNotExist) {
-					log.Error(err)
-				}
+	var running bool
+	srv := make(chan struct{}, 1)
+	srv <- struct{}{}
 
-				h := sha1.New()
-				write(h, config.ConfigPath)
-				if config.Config().TLSCertificate != "" || config.Config().TLSKey != "" {
-					write(h, config.Config().TLSCertificate)
-					write(h, config.Config().TLSKey)
-				}
+	var ctx, cancel = context.WithCancelCause(appCtx)
+	var wg = &sync.WaitGroup{}
 
-				b := h.Sum(nil)
-				if !bytes.Equal(hash, b) {
-					hash = b
-					AppExit()(ErrConfigChanged)
-				}
+	for {
+		select {
+		case sig := <-terminate:
+			appExit(fmt.Errorf("%w (%s)", ErrTerminated, sig))
+			if running {
+				wg.Wait()
 			}
+			return
+		case <-changed:
+			if err := config.Load(); err != nil && errors.Is(err, fs.ErrNotExist) {
+				log.Error(err)
+			}
+
+			h := sha1.New()
+			write(h, config.ConfigPath)
+			if config.Config().TLSCertificate != "" || config.Config().TLSKey != "" {
+				write(h, config.Config().TLSCertificate)
+				write(h, config.Config().TLSKey)
+			}
+
+			b := h.Sum(nil)
+			if bytes.Equal(hash, b) {
+				continue
+			}
+
+			hash = b
+
+			cancel(ErrConfigChanged)
+			ctx, cancel = context.WithCancelCause(appCtx)
+
+			srv <- struct{}{}
+		case <-srv:
+			wg.Add(1)
+			running = true
+			go func() {
+				defer wg.Done()
+				server.New().Run(ctx)
+				if exit := errors.Is(context.Cause(ctx), ErrTerminated); exit {
+					log.Error(context.Cause(ctx))
+				} else if err := context.Cause(ctx); err != nil {
+					log.Info("server restart because:", err.Error())
+				}
+			}()
 		}
-	}()
-
-	for run(AppCtx()) {
-		mu.Lock()
-		appCtx, appExit = context.WithCancelCause(context.Background())
-		mu.Unlock()
-		time.Sleep(time.Second)
-	}
-}
-
-func run(ctx context.Context) bool {
-	srv := server.New()
-	srv.Run(ctx)
-
-	restart := !errors.Is(context.Cause(ctx), ErrExit)
-
-	if restart {
-		if err := context.Cause(ctx); err != nil {
-			log.Info("server restart because:", err.Error())
-		}
-	} else {
-		log.Error(context.Cause(ctx))
 	}
 
-	return restart
-}
-
-func Exit() <-chan os.Signal {
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop,
-		syscall.SIGTERM, // kill
-		syscall.SIGINT,  // Ctrl+C
-		syscall.SIGQUIT, // Ctrl+\
-	)
-	return stop
 }

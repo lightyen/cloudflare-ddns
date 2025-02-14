@@ -30,7 +30,7 @@ func New() *Server {
 
 func (s *Server) init(ctx context.Context) (err error) {
 	s.handler = s.buildRouter()
-	go s.ddns(ctx)
+	// go s.ddns(ctx)
 	return nil
 }
 
@@ -48,7 +48,11 @@ func (s *Server) Run(ctx context.Context) {
 	go func() {
 		defer wg.Done()
 		err := s.serveHTTPS(ctx)
-		if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, http.ErrServerClosed) {
+		if errors.Is(err, fs.ErrNotExist) {
+			log.Info("TLS certificate is not found.")
+			return
+		}
+		if !errors.Is(err, http.ErrServerClosed) {
 			log.Error(err)
 		}
 	}()
