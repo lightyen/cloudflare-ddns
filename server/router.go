@@ -33,7 +33,7 @@ func recovery() gin.HandlerFunc {
 	}
 }
 
-func (s *Server) buildRouter() {
+func (s *Server) buildRouter() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	e := gin.New()
 	e.Use(recovery())
@@ -54,5 +54,5 @@ func (s *Server) buildRouter() {
 		})
 	}
 
-	s.srv.Handler = e
+	return e
 }
