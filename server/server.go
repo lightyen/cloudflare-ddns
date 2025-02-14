@@ -29,19 +29,14 @@ func New() *Server {
 }
 
 func (s *Server) init(ctx context.Context) (err error) {
-	go s.ddns(ctx)
 	s.handler = s.buildRouter()
+	go s.ddns(ctx)
 	return nil
 }
 
 func (s *Server) Run(ctx context.Context) {
-	ctx, stop := context.WithCancelCause(ctx)
-	defer stop(nil)
-
 	if err := s.init(ctx); err != nil {
-		stop(errors.New("init failed"))
-		log.Error(err)
-		return
+		panic(err)
 	}
 
 	wg := &sync.WaitGroup{}

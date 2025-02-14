@@ -130,7 +130,9 @@ func run(ctx context.Context) bool {
 	restart := !errors.Is(context.Cause(ctx), ErrExit)
 
 	if restart {
-		log.Info("server restart because:", context.Cause(ctx).Error())
+		if err := context.Cause(ctx); err != nil {
+			log.Info("server restart because:", err.Error())
+		}
 	} else {
 		log.Error(context.Cause(ctx))
 	}
