@@ -43,11 +43,11 @@ func (s *Server) Run(ctx context.Context) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_ = s.serve(ctx)
+		_ = s.serveHTTP(ctx)
 	}()
 	go func() {
 		defer wg.Done()
-		err := s.serveTLS(ctx)
+		err := s.serveHTTPS(ctx)
 		if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, http.ErrServerClosed) {
 			log.Error(err)
 		}
@@ -78,7 +78,19 @@ func (s *Server) redirect(handler http.Handler) http.Handler {
 	return h
 }
 
-func (s *Server) serve(ctx context.Context) error {
+func serve(srv *http.Server, onListenSuccess func()) error {
+	ln, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return err
+	}
+	defer ln.Close()
+	if onListenSuccess != nil {
+		onListenSuccess()
+	}
+	return srv.Serve(ln)
+}
+
+func (s *Server) serveHTTP(ctx context.Context) error {
 	srv := &http.Server{
 		Addr:    net.JoinHostPort("", strconv.FormatInt(int64(config.Config().ServePort), 10)),
 		Handler: s.redirect(s.handler),
@@ -96,13 +108,9 @@ func (s *Server) serve(ctx context.Context) error {
 			return ctx.Err()
 		}
 
-		ln, err := net.Listen("tcp", srv.Addr)
-		if err == nil {
-			defer ln.Close()
-
+		err := serve(srv, func() {
 			log.Info("http server listen:", srv.Addr)
-			err = srv.Serve(ln)
-		}
+		})
 
 		if err == nil {
 			panic("unexpected behavior")
@@ -117,7 +125,7 @@ func (s *Server) serve(ctx context.Context) error {
 	}
 }
 
-func (s *Server) serveTLS(ctx context.Context) error {
+func (s *Server) serveHTTPS(ctx context.Context) error {
 	GetCertificate, err := X509KeyPair(config.Config().TLSCertificate, config.Config().TLSKey)
 	if err != nil {
 		return fmt.Errorf("serve TLS: %w", err)
@@ -143,13 +151,9 @@ func (s *Server) serveTLS(ctx context.Context) error {
 			return ctx.Err()
 		}
 
-		ln, err := net.Listen("tcp", srv.Addr)
-		if err == nil {
-			defer ln.Close()
-
+		err := serve(srv, func() {
 			log.Info("https server listen:", srv.Addr)
-			err = srv.ServeTLS(ln, "", "")
-		}
+		})
 
 		if err == nil {
 			panic("unexpected behavior")

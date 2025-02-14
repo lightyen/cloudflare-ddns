@@ -1,16 +1,12 @@
 package config
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sync/atomic"
-
-	"github.com/lightyen/cloudflare-ddns/zok/log"
 )
 
 var (
@@ -23,29 +19,14 @@ func Config() Configuration {
 	return configuration.Load().(Configuration)
 }
 
-func Equal() bool {
-	m, _, _ := readConfigFile(ConfigPath)
-	current := configuration.Load().(Configuration)
-	data1, _ := json.Marshal(m)
-	data2, _ := json.Marshal(current)
-	return bytes.Equal(data1, data2)
-}
-
 func Load() error {
 	ConfigPath = filepath.Clean(ConfigPath)
-	m, _, err := readConfigFile(ConfigPath)
-
-	if errors.Is(err, fs.ErrNotExist) {
-		// m = DefaultConfig
-	} else if err != nil {
-		log.Warn("read config file:", err)
-	}
-
+	m, _, err := ReadConfigFile(ConfigPath)
 	configuration.Store(m)
-	return nil
+	return err
 }
 
-func readConfigFile(filename string) (config Configuration, path string, err error) {
+func ReadConfigFile(filename string) (config Configuration, path string, err error) {
 	config = DefaultConfig
 
 	p := filepath.Clean(filename)

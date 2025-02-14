@@ -54,7 +54,6 @@ type Mode string
 const (
 	Stdout Mode = "stdout"
 	File   Mode = "file"
-	Both   Mode = "both"
 )
 
 type Options struct {
@@ -68,7 +67,17 @@ func Open(options Options) {
 
 	var err error
 
-	if options.Mode == Stdout {
+	if opts.Mode == "" {
+		opts.Mode = Stdout
+	}
+
+	if opts.Mode == File {
+		if filename == "" {
+			filename = "app.log"
+		}
+	}
+
+	if opts.Mode == Stdout {
 		c := zap.NewProductionConfig()
 		c.Level = zap.NewAtomicLevelAt(LogLevel)
 		c.OutputPaths = []string{"stdout"}
@@ -84,35 +93,18 @@ func Open(options Options) {
 		return
 	}
 
-	var iw io.Writer
-
-	if options.Mode == Both {
-		w = NewLogrotateWriter(LogrotateOption{
-			Filename:   filepath.Join(filepath.Clean(filename)),
-			MaxSize:    4 << 20,
-			MaxBackups: 6,
-			Compress:   true,
-		})
-		iw = &multiWriteCloser{
-			rotated: w,
-			stdout:  os.Stdout,
-			out:     io.MultiWriter(w, os.Stdout),
-		}
-	} else {
-		w = NewLogrotateWriter(LogrotateOption{
-			Filename:   filepath.Join(filepath.Clean(filename)),
-			MaxSize:    4 << 20,
-			MaxBackups: 6,
-			Compress:   true,
-		})
-		iw = w
-	}
+	var w io.Writer = NewLogrotateWriter(LogrotateOption{
+		Filename:   filepath.Join(filepath.Clean(filename)),
+		MaxSize:    4 << 20,
+		MaxBackups: 6,
+		Compress:   true,
+	})
 
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
 	encoderConfig.CallerKey = zapcore.OmitKey
 	encoderConfig.StacktraceKey = zapcore.OmitKey
-	enc, ws := zapcore.NewJSONEncoder(encoderConfig), zapcore.AddSync(iw)
+	enc, ws := zapcore.NewJSONEncoder(encoderConfig), zapcore.AddSync(w)
 
 	v := zap.New(zapcore.NewCore(enc, ws, LogLevel))
 	logger = v

@@ -66,7 +66,11 @@ type CloudflareRecord struct {
 func (s *Server) ddns(ctx context.Context) {
 	go func() {
 		for {
-			s.apply <- struct{}{}
+			select {
+			case <-ctx.Done():
+				return
+			case s.apply <- struct{}{}:
+			}
 			time.Sleep(15 * time.Minute)
 		}
 	}()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -193,6 +194,9 @@ func (f *INotify) Close() error {
 func (f *INotify) AddWatch(path string, op Op) error {
 	f.watches.mu.Lock()
 	defer f.watches.mu.Unlock()
+
+	path = filepath.Dir(path)
+
 	_, exists := f.watches.wd[path]
 	if exists {
 		return nil

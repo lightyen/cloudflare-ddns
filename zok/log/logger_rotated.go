@@ -255,9 +255,11 @@ func (l *LogrotateWriter) backupName() string {
 }
 
 func (l *LogrotateWriter) openNew() error {
-	err := os.MkdirAll(l.dirname, 0755)
-	if err != nil {
-		return fmt.Errorf("can't make directories for new logfile: %w", err)
+	if l.dirname != "" {
+		err := os.MkdirAll(l.dirname, 0755)
+		if err != nil {
+			return fmt.Errorf("can't make directories for new logfile: %w", err)
+		}
 	}
 
 	mode := os.FileMode(0644)

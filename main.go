@@ -1,12 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha1"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
+	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -36,8 +42,19 @@ func AppExit() context.CancelCauseFunc {
 	return appExit
 }
 
+func write(h hash.Hash, filename string) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	io.Copy(h, f)
+}
+
 func main() {
-	log.Open(log.Options{Mode: "stdout"})
+	config.Load()
+
+	log.Open(log.Options{})
 	defer func() {
 		if err := log.Close(); err != nil {
 			panic(err)
@@ -54,10 +71,32 @@ func main() {
 	}
 	defer f.Close()
 
-	if err := f.AddWatch(filepath.Dir(config.ConfigPath), Remove|Rename|Create|CloseWrite); err != nil {
+	var watched []string
+
+	h := sha1.New()
+	if err := f.AddWatch(config.ConfigPath, Remove|Rename|Create|CloseWrite); err != nil {
 		log.Error(err)
 		return
 	}
+	watched = append(watched, config.ConfigPath)
+	write(h, config.ConfigPath)
+
+	if config.Config().TLSCertificate != "" || config.Config().TLSKey != "" {
+		if err := f.AddWatch(config.Config().TLSCertificate, Remove|Rename|Create|CloseWrite); err != nil {
+			log.Error(err)
+			return
+		}
+		if err := f.AddWatch(config.Config().TLSKey, Remove|Rename|Create|CloseWrite); err != nil {
+			log.Error(err)
+			return
+		}
+		watched = append(watched, config.Config().TLSCertificate)
+		watched = append(watched, config.Config().TLSKey)
+		write(h, config.Config().TLSCertificate)
+		write(h, config.Config().TLSKey)
+	}
+
+	hash := h.Sum(nil)
 
 	go f.Watch(ch)
 
@@ -68,12 +107,12 @@ func main() {
 
 		for e := range ch {
 			log.Debugf("inotify: %+v", e)
-			name := e.Name
-			if name == "" {
-				name = filepath.Base(e.Path)
-			}
 
-			if name != filepath.Base(config.ConfigPath) {
+			t := filepath.Clean(filepath.Join(e.Path, e.Name))
+
+			if !slices.ContainsFunc(watched, func(s string) bool {
+				return filepath.Clean(s) == t
+			}) {
 				continue
 			}
 
@@ -104,7 +143,20 @@ func main() {
 				AppExit()(fmt.Errorf("%w (signal: %s)", ErrExit, sig))
 				return
 			case <-changed:
-				if !config.Equal() {
+				if err := config.Load(); err != nil && errors.Is(err, fs.ErrNotExist) {
+					log.Error(err)
+				}
+
+				h := sha1.New()
+				write(h, config.ConfigPath)
+				if config.Config().TLSCertificate != "" || config.Config().TLSKey != "" {
+					write(h, config.Config().TLSCertificate)
+					write(h, config.Config().TLSKey)
+				}
+
+				b := h.Sum(nil)
+				if !bytes.Equal(hash, b) {
+					hash = b
 					AppExit()(ErrConfigChanged)
 				}
 			}
@@ -120,10 +172,6 @@ func main() {
 }
 
 func run(ctx context.Context) bool {
-	if err := config.Load(); err != nil {
-		log.Error(err)
-	}
-
 	srv := server.New()
 	srv.Run(ctx)
 
