@@ -31,6 +31,10 @@ type InotifyEvent struct {
 	Op   Op
 }
 
+var (
+	ErrWatched = errors.New("already watched")
+)
+
 type Unsigned interface {
 	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
 }
@@ -40,91 +44,89 @@ func flag[T Unsigned](mask T, v T) bool {
 }
 
 func (o Op) String() string {
-	var b = &strings.Builder{}
+	s := new(strings.Builder)
 
 	if flag(o, Create) {
-		b.WriteString("|Create")
+		s.WriteString("|Create")
 	}
 	if flag(o, Remove) {
-		b.WriteString("|Remove")
+		s.WriteString("|Remove")
 	}
 	if flag(o, Rename) {
-		b.WriteString("|Rename")
+		s.WriteString("|Rename")
 	}
 	if flag(o, CloseWrite) {
-		b.WriteString("|CloseWrite")
+		s.WriteString("|CloseWrite")
 	}
 	if flag(o, Modify) {
-		b.WriteString("|Write")
+		s.WriteString("|Write")
 	}
 	if flag(o, Chmod) {
-		b.WriteString("|Chmod")
+		s.WriteString("|Chmod")
 	}
-
-	if b.Len() == 0 {
-		return fmt.Sprintf("Undefined(%d)", o)
+	if s.Len() == 0 {
+		return fmt.Sprintf("Undefined(0x%04X)", uint32(o))
 	}
-
-	return b.String()[1:]
+	return s.String()[1:]
 }
 
 type Mask uint32
 
 func (m Mask) String() string {
-	var b = &strings.Builder{}
+	s := new(strings.Builder)
 
 	if flag(m, syscall.IN_CREATE) {
-		b.WriteString("|IN_CREATE")
+		s.WriteString("|IN_CREATE")
 	}
 	if flag(m, syscall.IN_DELETE) {
-		b.WriteString("|IN_DELETE")
+		s.WriteString("|IN_DELETE")
 	}
 	if flag(m, syscall.IN_DELETE_SELF) {
-		b.WriteString("|IN_DELETE_SELF")
+		s.WriteString("|IN_DELETE_SELF")
 	}
 	if flag(m, syscall.IN_MOVE_SELF) {
-		b.WriteString("|IN_MOVE_SELF")
+		s.WriteString("|IN_MOVE_SELF")
 	}
 	if flag(m, syscall.IN_MOVED_TO) {
-		b.WriteString("|IN_MOVED_TO")
+		s.WriteString("|IN_MOVED_TO")
 	}
 	if flag(m, syscall.IN_MOVED_FROM) {
-		b.WriteString("|IN_MOVED_FROM")
+		s.WriteString("|IN_MOVED_FROM")
 	}
 	if flag(m, syscall.IN_CLOSE_WRITE) {
-		b.WriteString("|IN_CLOSE_WRITE")
+		s.WriteString("|IN_CLOSE_WRITE")
 	}
 	if flag(m, syscall.IN_CLOSE_NOWRITE) {
-		b.WriteString("|IN_CLOSE_NOWRITE")
+		s.WriteString("|IN_CLOSE_NOWRITE")
 	}
 	if flag(m, syscall.IN_MODIFY) {
-		b.WriteString("|IN_MODIFY")
+		s.WriteString("|IN_MODIFY")
 	}
 	if flag(m, syscall.IN_ACCESS) {
-		b.WriteString("|IN_ACCESS")
+		s.WriteString("|IN_ACCESS")
 	}
 	if flag(m, syscall.IN_ATTRIB) {
-		b.WriteString("|IN_ATTRIB")
+		s.WriteString("|IN_ATTRIB")
 	}
 
 	if flag(m, syscall.IN_IGNORED) {
-		b.WriteString("|IN_IGNORED")
+		s.WriteString("|IN_IGNORED")
 	}
 	if flag(m, syscall.IN_ISDIR) {
-		b.WriteString("|IN_ISDIR")
+		s.WriteString("|IN_ISDIR")
 	}
 	if flag(m, syscall.IN_Q_OVERFLOW) {
-		b.WriteString("|IN_Q_OVERFLOW")
+		s.WriteString("|IN_Q_OVERFLOW")
 	}
 	if flag(m, syscall.IN_UNMOUNT) {
-		b.WriteString("|IN_UNMOUNT")
+		s.WriteString("|IN_UNMOUNT")
 	}
 
-	if b.Len() == 0 {
+	if s.Len() == 0 {
 		return fmt.Sprintf("Undefined(%d)", m)
 	}
 
-	return b.String()[1:]
+	return s.String()[1:]
 }
 
 func maskToOp(mask uint32) (op Op) {
@@ -157,16 +159,43 @@ type INotify struct {
 }
 
 type watches struct {
-	mu    sync.RWMutex
-	paths map[int]string
-	wd    map[string]int
+	mu      sync.RWMutex
+	wdDir   map[int]string
+	dirWd   map[string]int
+	targets map[string]int
+}
+
+func (w *watches) getDir(e *syscall.InotifyEvent) string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.wdDir[int(e.Wd)]
+}
+
+func (w *watches) deleteSelf(e *syscall.InotifyEvent) (ok bool) {
+	wd := int(e.Wd)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var dir string
+	dir, ok = w.wdDir[wd]
+	if !ok {
+		return
+	}
+	delete(w.wdDir, wd)
+	delete(w.dirWd, dir)
+	for t, fd := range w.targets {
+		if fd == wd {
+			delete(w.targets, t)
+		}
+	}
+	return
 }
 
 func NewINotify() *INotify {
 	return &INotify{
 		watches: &watches{
-			paths: map[int]string{},
-			wd:    map[string]int{},
+			wdDir:   map[int]string{},
+			dirWd:   map[string]int{},
+			targets: map[string]int{},
 		},
 	}
 }
@@ -183,11 +212,12 @@ func (f *INotify) Open() (err error) {
 func (f *INotify) Close() error {
 	f.watches.mu.Lock()
 	defer f.watches.mu.Unlock()
-	for w := range f.watches.paths {
+	for w := range f.watches.wdDir {
 		syscall.InotifyRmWatch(f.fd, uint32(w))
 	}
-	f.watches.paths = map[int]string{}
-	f.watches.wd = map[string]int{}
+	clear(f.watches.wdDir)
+	clear(f.watches.dirWd)
+	clear(f.watches.targets)
 	return f.file.Close()
 }
 
@@ -195,37 +225,46 @@ func (f *INotify) AddWatch(path string, op Op) error {
 	f.watches.mu.Lock()
 	defer f.watches.mu.Unlock()
 
-	path = filepath.Dir(path)
+	t := filepath.Clean(path)
+	if _, exists := f.watches.targets[t]; exists {
+		return ErrWatched
+	}
 
-	_, exists := f.watches.wd[path]
+	dir := filepath.Dir(t)
+
+	wd, exists := f.watches.dirWd[dir]
 	if exists {
+		f.watches.targets[t] = wd
 		return nil
 	}
 
-	w, err := syscall.InotifyAddWatch(f.fd, path, uint32(op))
+	wd, err := syscall.InotifyAddWatch(f.fd, dir, uint32(op))
 	if err != nil {
 		return err
 	}
-	f.watches.wd[path] = w
-	f.watches.paths[w] = path
+
+	f.watches.targets[t] = wd
+	f.watches.dirWd[dir] = wd
+	f.watches.wdDir[wd] = dir
 	return nil
 }
 
-func (f *INotify) Watch(ch chan<- InotifyEvent) {
+func (f *INotify) Watch(ch chan<- InotifyEvent) error {
 	buf := make([]byte, syscall.SizeofInotifyEvent<<12)
 	for {
 		n, err := f.file.Read(buf)
 
-		switch {
-		case errors.Is(err, os.ErrClosed):
-			return
-		case err != nil:
+		if errors.Is(err, os.ErrClosed) {
+			return err
+		}
+
+		if err != nil {
 			if err2, ok := err.(*os.PathError); ok {
 				if err2.Op == "read" && err2.Err.Error() == "bad file descriptor" {
-					return
+					return err
 				}
 			}
-			continue
+			return err
 		}
 
 		if n < syscall.SizeofInotifyEvent {
@@ -253,28 +292,23 @@ func (f *INotify) Watch(ch chan<- InotifyEvent) {
 				}
 			}
 
-			f.watches.mu.RLock()
 			event := InotifyEvent{
 				Len:  e.Len,
 				Mask: Mask(e.Mask),
 				Name: s.String(),
-				Path: f.watches.paths[int(e.Wd)],
+				Path: f.watches.getDir(e),
 				Op:   maskToOp(e.Mask),
 			}
-			f.watches.mu.RUnlock()
 
 			if e.Mask&syscall.IN_DELETE_SELF == syscall.IN_DELETE_SELF {
-				f.watches.mu.Lock()
-				if path, ok := f.watches.paths[int(e.Wd)]; ok {
-					delete(f.watches.paths, int(e.Wd))
-					delete(f.watches.wd, path)
-				}
-				f.watches.mu.Unlock()
+				f.watches.deleteSelf(e)
 			}
 
-			select {
-			case ch <- event:
-			default:
+			t := filepath.Clean(filepath.Join(event.Path, event.Name))
+
+			_, exists := f.watches.targets[t]
+			if exists {
+				ch <- event
 			}
 
 			offset += int(syscall.SizeofInotifyEvent + e.Len)

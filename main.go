@@ -11,8 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -68,14 +66,11 @@ func main() {
 	}
 	defer f.Close()
 
-	var watched []string
-
 	h := sha1.New()
 	if err := f.AddWatch(config.ConfigPath, Remove|Rename|Create|CloseWrite); err != nil {
 		log.Error(err)
 		return
 	}
-	watched = append(watched, config.ConfigPath)
 	write(h, config.ConfigPath)
 
 	if config.Config().TLSCertificate != "" || config.Config().TLSKey != "" {
@@ -87,8 +82,6 @@ func main() {
 			log.Error(err)
 			return
 		}
-		watched = append(watched, config.Config().TLSCertificate)
-		watched = append(watched, config.Config().TLSKey)
 		write(h, config.Config().TLSCertificate)
 		write(h, config.Config().TLSKey)
 	}
@@ -102,17 +95,7 @@ func main() {
 		var ctx context.Context
 		var cancel context.CancelFunc
 
-		for e := range ch {
-			log.Debugf("inotify: %+v", e)
-
-			t := filepath.Clean(filepath.Join(e.Path, e.Name))
-
-			if !slices.ContainsFunc(watched, func(s string) bool {
-				return filepath.Clean(s) == t
-			}) {
-				continue
-			}
-
+		for range ch {
 			if cancel != nil {
 				cancel()
 			}
