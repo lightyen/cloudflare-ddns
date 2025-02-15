@@ -190,6 +190,16 @@ func (w *watches) deleteSelf(e *syscall.InotifyEvent) (ok bool) {
 	return
 }
 
+func (w *watches) watched() []string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	var s []string
+	for k := range w.targets {
+		s = append(s, k)
+	}
+	return s
+}
+
 func NewINotify() *INotify {
 	return &INotify{
 		watches: &watches{
@@ -219,6 +229,10 @@ func (f *INotify) Close() error {
 	clear(f.watches.dirWd)
 	clear(f.watches.targets)
 	return f.file.Close()
+}
+
+func (f *INotify) Watched() []string {
+	return f.watches.watched()
 }
 
 func (f *INotify) AddWatch(path string, op Op) error {

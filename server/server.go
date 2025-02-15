@@ -47,6 +47,9 @@ func (s *Server) Run(ctx context.Context) {
 	}()
 	go func() {
 		defer wg.Done()
+		if config.Config().TLSCertificate == "" && config.Config().TLSKey == "" {
+			return
+		}
 		err := s.serveHTTPS(ctx)
 		if errors.Is(err, fs.ErrNotExist) {
 			log.Info("TLS certificate is not found.")

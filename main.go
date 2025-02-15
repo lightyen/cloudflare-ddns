@@ -71,7 +71,6 @@ func main() {
 		log.Error(err)
 		return
 	}
-	write(h, config.ConfigPath)
 
 	if config.Config().TLSCertificate != "" || config.Config().TLSKey != "" {
 		if err := f.AddWatch(config.Config().TLSCertificate, Remove|Rename|Create|CloseWrite); err != nil {
@@ -82,8 +81,10 @@ func main() {
 			log.Error(err)
 			return
 		}
-		write(h, config.Config().TLSCertificate)
-		write(h, config.Config().TLSKey)
+	}
+
+	for _, s := range f.Watched() {
+		write(h, s)
 	}
 
 	hash := h.Sum(nil)
@@ -116,11 +117,11 @@ func main() {
 		}
 	}()
 
-	var running bool
-	srv := make(chan struct{}, 1)
-	srv <- struct{}{}
-
 	var ctx, cancel = context.WithCancelCause(appCtx)
+	var running bool
+	srv := make(chan context.Context, 1)
+	srv <- ctx
+
 	var wg = &sync.WaitGroup{}
 
 	for {
@@ -131,19 +132,29 @@ func main() {
 				wg.Wait()
 			}
 			return
+		case ctx := <-srv:
+			wg.Add(1)
+			running = true
+			go func(ctx context.Context) {
+				defer wg.Done()
+				server.New().Run(ctx)
+				if exit := errors.Is(context.Cause(ctx), ErrTerminated); exit {
+					log.Error(context.Cause(ctx))
+				} else if err := context.Cause(ctx); err != nil {
+					log.Info("server restart because:", err.Error())
+				}
+			}(ctx)
 		case <-changed:
 			if err := config.Load(); err != nil && errors.Is(err, fs.ErrNotExist) {
 				log.Error(err)
 			}
 
 			h := sha1.New()
-			write(h, config.ConfigPath)
-			if config.Config().TLSCertificate != "" || config.Config().TLSKey != "" {
-				write(h, config.Config().TLSCertificate)
-				write(h, config.Config().TLSKey)
+			for _, s := range f.Watched() {
+				write(h, s)
 			}
-
 			b := h.Sum(nil)
+
 			if bytes.Equal(hash, b) {
 				continue
 			}
@@ -152,20 +163,7 @@ func main() {
 
 			cancel(ErrConfigChanged)
 			ctx, cancel = context.WithCancelCause(appCtx)
-
-			srv <- struct{}{}
-		case <-srv:
-			wg.Add(1)
-			running = true
-			go func() {
-				defer wg.Done()
-				server.New().Run(ctx)
-				if exit := errors.Is(context.Cause(ctx), ErrTerminated); exit {
-					log.Error(context.Cause(ctx))
-				} else if err := context.Cause(ctx); err != nil {
-					log.Info("server restart because:", err.Error())
-				}
-			}()
+			srv <- ctx
 		}
 	}
 
