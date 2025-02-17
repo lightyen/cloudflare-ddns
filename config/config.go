@@ -32,12 +32,10 @@ var (
 	Version       string
 	ConfigPath    = "config/config.json"
 	DefaultConfig = Configuration{
-		ServePort:      80,
-		ServeTLSPort:   443,
-		TLSCertificate: "cer.pem",
-		TLSKey:         "key.pem",
-		WebRoot:        "www",
-		DataDirectory:  "data",
+		ServePort:     80,
+		ServeTLSPort:  443,
+		WebRoot:       "www",
+		DataDirectory: "data",
 	}
 )
 
