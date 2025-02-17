@@ -118,7 +118,6 @@ func main() {
 	}()
 
 	var ctx, cancel = context.WithCancelCause(appCtx)
-	var running bool
 	srv := make(chan context.Context, 1)
 	srv <- ctx
 
@@ -128,13 +127,10 @@ func main() {
 		select {
 		case sig := <-terminate:
 			appExit(fmt.Errorf("%w (%s)", ErrTerminated, sig))
-			if running {
-				wg.Wait()
-			}
+			wg.Wait()
 			return
 		case ctx := <-srv:
 			wg.Add(1)
-			running = true
 			go func(ctx context.Context) {
 				defer wg.Done()
 				server.New().Run(ctx)
