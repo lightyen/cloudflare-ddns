@@ -3,6 +3,11 @@ IMAGE_NAME := ${NAME}
 VERSION := v0.0.0
 DATE := $(shell date +%Y-%m%d-%H%M)
 
+GO_BUILD := go build -mod=vendor
+ifeq (,$(wildcard ./vendor))
+	GO_BUILD = go build
+endif
+
 
 ifeq ($(shell git diff-index --quiet HEAD 2> /dev/null || echo fail), fail)
 	VERSION := untracked.$(shell git rev-parse --verify HEAD --short)
@@ -19,7 +24,7 @@ LDFLAGS := -s -w -X github.com/lightyen/${NAME}/config.Version=${VERSION}-${DATE
 all: binary
 
 binary:
-	GOTOOLCHAIN=auto GOFLAGS=${GO_FLAGS} go build -ldflags="${LDFLAGS}" -o app
+	GOTOOLCHAIN=auto GOFLAGS=${GO_FLAGS} ${GO_BUILD} -ldflags="${LDFLAGS}" -o app
 
 docker: binary
 	docker buildx build -t ${IMAGE_NAME}:${VERSION} .
