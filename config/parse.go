@@ -3,26 +3,32 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"io"
 	"os"
 	"path/filepath"
-	"sync/atomic"
+	"sync"
 )
 
 var (
-	configuration   atomic.Value
+	mu              sync.RWMutex
+	configuration   Configuration
 	ErrRecordFormat = errors.New("wrong record format")
 	configExts      = []string{".json"}
 )
 
 func Config() Configuration {
-	return configuration.Load().(Configuration)
+	mu.RLock()
+	defer mu.RUnlock()
+	return configuration
 }
 
 func Load() error {
 	ConfigPath = filepath.Clean(ConfigPath)
 	m, _, err := ReadConfigFile(ConfigPath)
-	configuration.Store(m)
+	mu.Lock()
+	defer mu.Unlock()
+	configuration = m
 	return err
 }
 
@@ -60,5 +66,22 @@ func ReadConfigFile(filename string) (config Configuration, path string, err err
 	}
 
 	err = os.ErrNotExist
+	return
+}
+
+func FlagParse() (err error) {
+	s := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// TODO: handle flags
+	v := configuration
+	s.IntVar(&v.ServePort, "http", v.ServePort, "http port")
+
+	err = s.Parse(os.Args[1:])
+	if err == nil {
+		configuration = v
+	}
 	return
 }

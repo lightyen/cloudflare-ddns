@@ -49,6 +49,12 @@ func write(h hash.Hash, filename string) {
 func main() {
 	config.Load()
 
+	err := config.FlagParse()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
 	log.Open(log.Options{})
 	defer func() {
 		if err := log.Close(); err != nil {
@@ -142,6 +148,9 @@ func main() {
 			}(ctx)
 		case <-changed:
 			if err := config.Load(); err != nil && errors.Is(err, fs.ErrNotExist) {
+				log.Error(err)
+			}
+			if err := config.FlagParse(); err != nil {
 				log.Error(err)
 			}
 
