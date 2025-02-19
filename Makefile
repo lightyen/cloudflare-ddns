@@ -1,29 +1,33 @@
-ifneq ($(shell git rev-parse --git-dir 2>&1 >/dev/null && echo 0), 0)
-	VERSION := 0.0.0
-else
+VERSION := 0.0.0
+
+ifeq ($(shell git rev-parse --git-dir 2>&1 >/dev/null && echo 0), 0)
+	TAG := $(shell git describe --tags --abbrev=0 2> /dev/null)
+	ifeq (,$(TAG))
+		TAG := 0.0.0
+	endif
+
+	CURRENT := $(shell git rev-parse --verify HEAD 2> /dev/null)
 	ifneq (,$(shell git status --short 2> /dev/null))
-		hash := $(shell git rev-parse --verify HEAD --short 2> /dev/null)
-		ifneq (,$(hash))
-			VERSION := untracked.$(hash)
+		ifeq (,$(CURRENT))
+			VERSION := $(TAG)-untracked
 		else
-			VERSION := untracked
+			VERSION := $(TAG)-untracked+$(shell git rev-parse --verify HEAD --short)
 		endif
 	else
-		ifneq ($(shell git rev-parse HEAD), $(shell git rev-list --max-count=1 2> /dev/null $(shell git describe --abbrev=0 2> /dev/null)))
-			VERSION := $(shell git rev-parse --abbrev-ref HEAD).$(shell git rev-parse --verify HEAD --short)
+		ifneq ($(CURRENT), $(shell git rev-list --max-count=1 $(shell git describe --tags --abbrev=0 2> /dev/null) 2> /dev/null))
+			VERSION := $(TAG)-$(shell git rev-parse --abbrev-ref HEAD)+$(shell git rev-parse --verify HEAD --short)
 		else
-			VERSION := $(shell git describe --abbrev)
+			VERSION := $(TAG)
 		endif
 	endif
 endif
 
 NAME := cloudflare-ddns
 IMAGE_NAME := ${NAME}
-DATE := $(shell date +%Y-%m%d-%H%M)
 
 GO_FLAGS := "-tags=nomsgpack"
 
-LDFLAGS := -s -w -X github.com/lightyen/${NAME}/config.Version=${VERSION}-${DATE}
+LDFLAGS := -s -w -X github.com/lightyen/${NAME}/config.Version=${VERSION}
 
 all: binary
 
