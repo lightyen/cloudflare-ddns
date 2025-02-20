@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lightyen/cloudflare-ddns/config"
+	"github.com/lightyen/cloudflare-ddns/settings"
 	"github.com/lightyen/cloudflare-ddns/zok/log"
 )
 
@@ -42,7 +42,7 @@ func (s *Server) buildRouter() http.Handler {
 	api := e.Group("/vapi")
 	{
 		api.GET("/version", func(c *gin.Context) {
-			c.String(http.StatusOK, config.Version)
+			c.String(http.StatusOK, settings.Version)
 		})
 
 		api.GET("/logs", s.GetLogs)

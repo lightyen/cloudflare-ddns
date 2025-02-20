@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lightyen/cloudflare-ddns/config"
+	"github.com/lightyen/cloudflare-ddns/settings"
 	"github.com/lightyen/cloudflare-ddns/zok/log"
 )
 
@@ -47,7 +47,7 @@ func (s *Server) Run(ctx context.Context) {
 	}()
 	go func() {
 		defer wg.Done()
-		if config.Config().TLSCertificate == "" && config.Config().TLSKey == "" {
+		if settings.Value().TLSCertificate == "" && settings.Value().TLSKey == "" {
 			return
 		}
 		err := s.serveHTTPS(ctx)
@@ -74,7 +74,7 @@ func (s *Server) redirect(handler http.Handler) http.Handler {
 			}
 			u := *c.Request.URL
 			u.Scheme = "https"
-			u.Host = net.JoinHostPort(host, strconv.Itoa(config.Config().ServeTLSPort))
+			u.Host = net.JoinHostPort(host, strconv.Itoa(settings.Value().ServeTLSPort))
 			c.Header("Cache-Control", "no-store")
 			c.Redirect(http.StatusMovedPermanently, u.String())
 			return
@@ -99,7 +99,7 @@ func serve(srv *http.Server, onListenSuccess func()) error {
 
 func (s *Server) serveHTTP(ctx context.Context) error {
 	srv := &http.Server{
-		Addr:    net.JoinHostPort("", strconv.FormatInt(int64(config.Config().ServePort), 10)),
+		Addr:    net.JoinHostPort("", strconv.FormatInt(int64(settings.Value().ServePort), 10)),
 		Handler: s.redirect(s.handler),
 	}
 
@@ -133,13 +133,13 @@ func (s *Server) serveHTTP(ctx context.Context) error {
 }
 
 func (s *Server) serveHTTPS(ctx context.Context) error {
-	GetCertificate, err := X509KeyPair(config.Config().TLSCertificate, config.Config().TLSKey)
+	GetCertificate, err := X509KeyPair(settings.Value().TLSCertificate, settings.Value().TLSKey)
 	if err != nil {
 		return fmt.Errorf("serve TLS: %w", err)
 	}
 
 	srv := &http.Server{
-		Addr:    net.JoinHostPort("", strconv.FormatInt(int64(config.Config().ServeTLSPort), 10)),
+		Addr:    net.JoinHostPort("", strconv.FormatInt(int64(settings.Value().ServeTLSPort), 10)),
 		Handler: s.handler,
 		TLSConfig: &tls.Config{
 			GetCertificate: GetCertificate,

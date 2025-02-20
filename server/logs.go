@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lightyen/cloudflare-ddns/config"
+	"github.com/lightyen/cloudflare-ddns/settings"
 	"github.com/lightyen/cloudflare-ddns/zok/log"
 )
 
 func (s *Server) GetLogs(c *gin.Context) {
-	filename := filepath.Join(config.Config().DataDirectory, log.Filename())
+	filename := filepath.Join(settings.Value().DataDirectory, log.Filename())
 	f, err := os.Open(filename)
 	if err != nil {
 		return

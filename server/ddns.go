@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lightyen/cloudflare-ddns/config"
+	"github.com/lightyen/cloudflare-ddns/settings"
 	"github.com/lightyen/cloudflare-ddns/zok/log"
 )
 
@@ -111,8 +111,8 @@ func GetInternetAddrs(ctx context.Context) (ipv4, ipv6 string, err error) {
 
 	go func() {
 		defer wg.Done()
-		if config.Config().StaticIPv6 != "" {
-			ipv6 = config.Config().StaticIPv6
+		if settings.Value().StaticIPv6 != "" {
+			ipv6 = settings.Value().StaticIPv6
 			return
 		}
 		ipv6, _ = OutboundIPv6()
@@ -143,7 +143,7 @@ func (s *Server) modify(ctx context.Context) error {
 	}
 
 	// add not exists
-	for _, rule := range config.Config().Records {
+	for _, rule := range settings.Value().Records {
 		var exists bool
 		for _, r := range records {
 			if r.Name == rule.Name && r.Type == rule.Type {
@@ -178,7 +178,7 @@ func (s *Server) modify(ctx context.Context) error {
 
 	for _, r := range records {
 		var exists bool
-		for _, v := range config.Config().Records {
+		for _, v := range settings.Value().Records {
 			if r.Name == v.Name && r.Type == v.Type {
 				exists = true
 				break
@@ -220,13 +220,13 @@ func (s *Server) modify(ctx context.Context) error {
 }
 
 func RequestCloudflare(ctx context.Context, method, path string, body io.Reader, resData any) error {
-	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s", config.Config().ZoneID)+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s", settings.Value().ZoneID)+path, body)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("X-Auth-Email", config.Config().Email)
-	req.Header.Set("X-Auth-Key", config.Config().Token)
+	req.Header.Set("X-Auth-Email", settings.Value().Email)
+	req.Header.Set("X-Auth-Key", settings.Value().Token)
 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8")

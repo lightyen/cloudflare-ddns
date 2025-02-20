@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lightyen/cloudflare-ddns/config"
+	"github.com/lightyen/cloudflare-ddns/settings"
 	"github.com/lightyen/cloudflare-ddns/zok/compress"
 	"github.com/lightyen/cloudflare-ddns/zok/header"
 )
@@ -44,7 +44,7 @@ func fileExists(root, urlpath string) bool {
 
 func (s *Server) returnIndex(useAny bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		index := filepath.Join(config.Config().DataDirectory, config.Config().WebRoot, "index.html")
+		index := filepath.Join(settings.Value().DataDirectory, settings.Value().WebRoot, "index.html")
 		_, err := os.Stat(index)
 		if err != nil {
 			return
@@ -73,13 +73,13 @@ func (s *Server) returnIndex(useAny bool) gin.HandlerFunc {
 }
 
 func (s *Server) fileServe() gin.HandlerFunc {
-	root := filepath.Join(config.Config().DataDirectory, config.Config().WebRoot)
+	root := filepath.Join(settings.Value().DataDirectory, settings.Value().WebRoot)
 	serve := http.StripPrefix("/", http.FileServer(gin.Dir(root, false)))
 	index := s.returnIndex(true)
 
 	return func(c *gin.Context) {
 		if fileExists(root, c.Request.URL.Path) {
-			filename := filepath.Join(config.Config().DataDirectory, config.Config().WebRoot, c.Request.URL.Path)
+			filename := filepath.Join(settings.Value().DataDirectory, settings.Value().WebRoot, c.Request.URL.Path)
 			if eTag, _ := etag(filename); eTag != "" {
 				c.Header("Cache-Control", "max-age=0")
 				c.Header("Etag", eTag)

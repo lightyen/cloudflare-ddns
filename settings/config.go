@@ -1,11 +1,10 @@
-package config
+package settings
 
 import (
-	"encoding/json"
 	"os"
 )
 
-type Configuration struct {
+type Preferences struct {
 	ServePort      int    `json:"http" yaml:"http" usage:"server port"`
 	ServeTLSPort   int    `json:"https" yaml:"https"`
 	TLSCertificate string `json:"tls-cert" yaml:"tls-cert"`
@@ -33,7 +32,7 @@ var (
 	PrintVersion  bool
 	BuildTime     string
 	ConfigPath    = "config/config.json"
-	DefaultConfig = Configuration{
+	DefaultConfig = Preferences{
 		ServePort:     80,
 		ServeTLSPort:  443,
 		WebRoot:       "www",
@@ -47,12 +46,4 @@ func init() {
 			ConfigPath = v
 		}
 	}
-}
-
-func NewFile() error {
-	data, err := json.MarshalIndent(DefaultConfig, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(ConfigPath, data, 0644)
 }

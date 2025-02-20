@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lightyen/cloudflare-ddns/config"
 	"github.com/lightyen/cloudflare-ddns/server"
+	"github.com/lightyen/cloudflare-ddns/settings"
 	"github.com/lightyen/cloudflare-ddns/zok/log"
 )
 
@@ -47,13 +47,13 @@ func write(h hash.Hash, filename string) {
 }
 
 func main() {
-	config.Load()
-	if err := config.FlagParse(); err != nil {
+	settings.Load()
+	if err := settings.FlagParse(); err != nil {
 		return
 	}
 
-	if config.PrintVersion {
-		fmt.Println(config.Version)
+	if settings.PrintVersion {
+		fmt.Println(settings.Version)
 		return
 	}
 
@@ -75,17 +75,17 @@ func main() {
 	defer f.Close()
 
 	h := sha1.New()
-	if err := f.AddWatch(config.ConfigPath, Remove|Rename|Create|CloseWrite); err != nil {
+	if err := f.AddWatch(settings.ConfigPath, Remove|Rename|Create|CloseWrite); err != nil {
 		log.Error(err)
 		return
 	}
 
-	if config.Config().TLSCertificate != "" || config.Config().TLSKey != "" {
-		if err := f.AddWatch(config.Config().TLSCertificate, Remove|Rename|Create|CloseWrite); err != nil {
+	if settings.Value().TLSCertificate != "" || settings.Value().TLSKey != "" {
+		if err := f.AddWatch(settings.Value().TLSCertificate, Remove|Rename|Create|CloseWrite); err != nil {
 			log.Error(err)
 			return
 		}
-		if err := f.AddWatch(config.Config().TLSKey, Remove|Rename|Create|CloseWrite); err != nil {
+		if err := f.AddWatch(settings.Value().TLSKey, Remove|Rename|Create|CloseWrite); err != nil {
 			log.Error(err)
 			return
 		}
@@ -149,10 +149,10 @@ func main() {
 				}
 			}(ctx)
 		case <-changed:
-			if err := config.Load(); err != nil && errors.Is(err, fs.ErrNotExist) {
+			if err := settings.Load(); err != nil && errors.Is(err, fs.ErrNotExist) {
 				log.Error(err)
 			}
-			if err := config.FlagParse(); err != nil {
+			if err := settings.FlagParse(); err != nil {
 				log.Error(err)
 			}
 

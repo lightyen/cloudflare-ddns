@@ -1,4 +1,4 @@
-package config
+package settings
 
 import (
 	"encoding/json"
@@ -18,8 +18,8 @@ var (
 	configExts      = []string{".json"}
 )
 
-func Config() Configuration {
-	return configuration.Load().(Configuration)
+func Value() Preferences {
+	return configuration.Load().(Preferences)
 }
 
 func Load() error {
@@ -29,7 +29,7 @@ func Load() error {
 	return err
 }
 
-func ReadConfigFile(filename string) (config Configuration, path string, err error) {
+func ReadConfigFile(filename string) (config Preferences, path string, err error) {
 	config = DefaultConfig
 
 	p := filepath.Clean(filename)

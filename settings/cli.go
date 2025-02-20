@@ -1,4 +1,4 @@
-package config
+package settings
 
 import (
 	"errors"
@@ -24,7 +24,7 @@ func FlagParse() error {
 	f.BoolVar(&PrintVersion, "v", false, "print version")
 	f.BoolVar(&PrintVersion, "version", false, "print version")
 
-	m := Config()
+	m := Value()
 	if err := loadEnvFlags(f, &m); err != nil {
 		return err
 	}
@@ -61,14 +61,14 @@ func env(f reflect.Value, name string) error {
 	return err
 }
 
-type Value interface {
+type iValue interface {
 	String() string
 	Set(string) (err error)
 	TypeInfo() string
 	DefaultValue() string
 }
 
-var _ Value = &value{}
+var _ iValue = &value{}
 
 type value struct {
 	sf  reflect.Value
@@ -109,7 +109,7 @@ func (i *value) DefaultValue() string {
 	return ""
 }
 
-func loadEnvFlags(flagSet *flag.FlagSet, conf *Configuration) error {
+func loadEnvFlags(flagSet *flag.FlagSet, conf *Preferences) error {
 	t := reflect.TypeOf(conf).Elem()
 	v := reflect.ValueOf(conf).Elem()
 	d := reflect.ValueOf(&DefaultConfig).Elem()
@@ -120,6 +120,12 @@ func loadEnvFlags(flagSet *flag.FlagSet, conf *Configuration) error {
 		def := d.Field(i)
 		name := jsonTagName(f)
 		usage := f.Tag.Get("usage")
+
+		switch name {
+		case "records":
+			continue
+		}
+
 		if sf.CanSet() {
 			if err := env(sf, name); err != nil {
 				return err
@@ -133,7 +139,7 @@ func loadEnvFlags(flagSet *flag.FlagSet, conf *Configuration) error {
 
 func PrintDefaults(f *flag.FlagSet) {
 	f.VisitAll(func(flag *flag.Flag) {
-		val, ok := flag.Value.(Value)
+		val, ok := flag.Value.(iValue)
 		if !ok {
 			return
 		}
