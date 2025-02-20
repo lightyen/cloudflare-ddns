@@ -100,7 +100,11 @@ func (i *value) TypeInfo() string {
 
 func (i *value) DefaultValue() string {
 	if i.def.IsValid() && !i.def.IsZero() && i.def.CanInterface() {
-		return fmt.Sprint(i.def.Interface())
+		v := i.def.Interface()
+		if s, ok := v.(string); ok {
+			return strconv.Quote(s)
+		}
+		return fmt.Sprint(v)
 	}
 	return ""
 }
