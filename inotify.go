@@ -39,29 +39,29 @@ type Unsigned interface {
 	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
 }
 
-func flag[T Unsigned](mask T, v T) bool {
+func flagMask[T Unsigned](mask T, v T) bool {
 	return mask&v == v
 }
 
 func (o Op) String() string {
 	s := new(strings.Builder)
 
-	if flag(o, Create) {
+	if flagMask(o, Create) {
 		s.WriteString("|Create")
 	}
-	if flag(o, Remove) {
+	if flagMask(o, Remove) {
 		s.WriteString("|Remove")
 	}
-	if flag(o, Rename) {
+	if flagMask(o, Rename) {
 		s.WriteString("|Rename")
 	}
-	if flag(o, CloseWrite) {
+	if flagMask(o, CloseWrite) {
 		s.WriteString("|CloseWrite")
 	}
-	if flag(o, Modify) {
+	if flagMask(o, Modify) {
 		s.WriteString("|Write")
 	}
-	if flag(o, Chmod) {
+	if flagMask(o, Chmod) {
 		s.WriteString("|Chmod")
 	}
 	if s.Len() == 0 {
@@ -75,50 +75,50 @@ type Mask uint32
 func (m Mask) String() string {
 	s := new(strings.Builder)
 
-	if flag(m, syscall.IN_CREATE) {
+	if flagMask(m, syscall.IN_CREATE) {
 		s.WriteString("|IN_CREATE")
 	}
-	if flag(m, syscall.IN_DELETE) {
+	if flagMask(m, syscall.IN_DELETE) {
 		s.WriteString("|IN_DELETE")
 	}
-	if flag(m, syscall.IN_DELETE_SELF) {
+	if flagMask(m, syscall.IN_DELETE_SELF) {
 		s.WriteString("|IN_DELETE_SELF")
 	}
-	if flag(m, syscall.IN_MOVE_SELF) {
+	if flagMask(m, syscall.IN_MOVE_SELF) {
 		s.WriteString("|IN_MOVE_SELF")
 	}
-	if flag(m, syscall.IN_MOVED_TO) {
+	if flagMask(m, syscall.IN_MOVED_TO) {
 		s.WriteString("|IN_MOVED_TO")
 	}
-	if flag(m, syscall.IN_MOVED_FROM) {
+	if flagMask(m, syscall.IN_MOVED_FROM) {
 		s.WriteString("|IN_MOVED_FROM")
 	}
-	if flag(m, syscall.IN_CLOSE_WRITE) {
+	if flagMask(m, syscall.IN_CLOSE_WRITE) {
 		s.WriteString("|IN_CLOSE_WRITE")
 	}
-	if flag(m, syscall.IN_CLOSE_NOWRITE) {
+	if flagMask(m, syscall.IN_CLOSE_NOWRITE) {
 		s.WriteString("|IN_CLOSE_NOWRITE")
 	}
-	if flag(m, syscall.IN_MODIFY) {
+	if flagMask(m, syscall.IN_MODIFY) {
 		s.WriteString("|IN_MODIFY")
 	}
-	if flag(m, syscall.IN_ACCESS) {
+	if flagMask(m, syscall.IN_ACCESS) {
 		s.WriteString("|IN_ACCESS")
 	}
-	if flag(m, syscall.IN_ATTRIB) {
+	if flagMask(m, syscall.IN_ATTRIB) {
 		s.WriteString("|IN_ATTRIB")
 	}
 
-	if flag(m, syscall.IN_IGNORED) {
+	if flagMask(m, syscall.IN_IGNORED) {
 		s.WriteString("|IN_IGNORED")
 	}
-	if flag(m, syscall.IN_ISDIR) {
+	if flagMask(m, syscall.IN_ISDIR) {
 		s.WriteString("|IN_ISDIR")
 	}
-	if flag(m, syscall.IN_Q_OVERFLOW) {
+	if flagMask(m, syscall.IN_Q_OVERFLOW) {
 		s.WriteString("|IN_Q_OVERFLOW")
 	}
-	if flag(m, syscall.IN_UNMOUNT) {
+	if flagMask(m, syscall.IN_UNMOUNT) {
 		s.WriteString("|IN_UNMOUNT")
 	}
 
@@ -130,22 +130,22 @@ func (m Mask) String() string {
 }
 
 func maskToOp(mask uint32) (op Op) {
-	if flag(mask, syscall.IN_CREATE) || flag(mask, syscall.IN_MOVED_TO) {
+	if flagMask(mask, syscall.IN_CREATE) || flagMask(mask, syscall.IN_MOVED_TO) {
 		op |= Create
 	}
-	if flag(mask, syscall.IN_DELETE_SELF) || flag(mask, syscall.IN_DELETE) {
+	if flagMask(mask, syscall.IN_DELETE_SELF) || flagMask(mask, syscall.IN_DELETE) {
 		op |= Remove
 	}
-	if flag(mask, syscall.IN_MOVE_SELF) || flag(mask, syscall.IN_MOVED_FROM) {
+	if flagMask(mask, syscall.IN_MOVE_SELF) || flagMask(mask, syscall.IN_MOVED_FROM) {
 		op |= Rename
 	}
-	if flag(mask, syscall.IN_CLOSE_WRITE) {
+	if flagMask(mask, syscall.IN_CLOSE_WRITE) {
 		op |= CloseWrite
 	}
-	if flag(mask, syscall.IN_MODIFY) {
+	if flagMask(mask, syscall.IN_MODIFY) {
 		op |= Modify
 	}
-	if flag(mask, syscall.IN_ATTRIB) {
+	if flagMask(mask, syscall.IN_ATTRIB) {
 		op |= Chmod
 	}
 

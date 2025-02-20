@@ -10,13 +10,8 @@ import (
 	"strings"
 )
 
-func FlagParse() (err error) {
+func FlagParse() error {
 	f := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
-
-	m := Config()
-
-	constructFlags(f, &m)
-
 	f.Usage = func() {
 		if f.Name() == "" {
 			fmt.Fprintf(f.Output(), "Usage:\n")
@@ -26,12 +21,20 @@ func FlagParse() (err error) {
 		PrintDefaults(f)
 	}
 
-	err = f.Parse(os.Args[1:])
+	f.BoolVar(&PrintVersion, "v", false, "print version")
+	f.BoolVar(&PrintVersion, "version", false, "print version")
 
-	if err == nil {
-		configuration.Store(m)
+	m := Config()
+	if err := loadEnvFlags(f, &m); err != nil {
+		return err
 	}
-	return
+
+	if err := f.Parse(os.Args[1:]); err != nil {
+		return err
+	}
+
+	configuration.Store(m)
+	return nil
 }
 
 func jsonTagName(f reflect.StructField) string {
@@ -43,46 +46,37 @@ func jsonTagName(f reflect.StructField) string {
 	return strings.TrimSpace(k[0:index])
 }
 
-func env(v reflect.Value, name string) {
+func env(f reflect.Value, name string) error {
 	k := strings.ToUpper(strings.Replace(name, "-", "_", -1))
-	e, exists := os.LookupEnv(k)
+	s, exists := os.LookupEnv(k)
 	if !exists {
-		return
+		return nil
 	}
-	switch v.Kind().String() {
-	default:
 
-	case "int":
-		if val, err := strconv.Atoi(e); err == nil {
-			v.Set(reflect.ValueOf(val))
-		}
+	v, err := parseValue(f, s)
+	if err == nil {
+		f.Set(reflect.ValueOf(v))
 	}
+
+	return err
 }
 
 type Value interface {
 	String() string
 	Set(string) (err error)
+	TypeInfo() string
 	DefaultValue() string
-	Type() string
 }
+
+var _ Value = &value{}
 
 type value struct {
 	sf  reflect.Value
 	def reflect.Value
 }
 
-func (i *value) Set(s string) (err error) {
-	var v any
-
-	switch i.sf.Kind().String() {
-	default:
-		err = errors.ErrUnsupported
-	case "string":
-		v = s
-	case "int":
-		v, err = strconv.Atoi(s)
-	}
-
+func (i *value) Set(s string) error {
+	v, err := parseValue(i.sf, s)
 	if err != nil {
 		if errors.Is(err, strconv.ErrSyntax) {
 			return strconv.ErrSyntax
@@ -93,25 +87,25 @@ func (i *value) Set(s string) (err error) {
 		return err
 	}
 	i.sf.Set(reflect.ValueOf(v))
-	return
-}
-
-func (i *value) DefaultValue() string {
-	if i.def.IsValid() && i.def.CanInterface() {
-		return fmt.Sprint(i.def.Interface())
-	}
-	return ""
-}
-
-func (i *value) Type() string {
-	return i.sf.Type().String()
+	return nil
 }
 
 func (i *value) String() string {
 	return i.DefaultValue()
 }
 
-func constructFlags(flagSet *flag.FlagSet, conf *Configuration) {
+func (i *value) TypeInfo() string {
+	return i.sf.Type().String()
+}
+
+func (i *value) DefaultValue() string {
+	if i.def.IsValid() && !i.def.IsZero() && i.def.CanInterface() {
+		return fmt.Sprint(i.def.Interface())
+	}
+	return ""
+}
+
+func loadEnvFlags(flagSet *flag.FlagSet, conf *Configuration) error {
 	t := reflect.TypeOf(conf).Elem()
 	v := reflect.ValueOf(conf).Elem()
 	d := reflect.ValueOf(&DefaultConfig).Elem()
@@ -122,30 +116,29 @@ func constructFlags(flagSet *flag.FlagSet, conf *Configuration) {
 		def := d.Field(i)
 		name := jsonTagName(f)
 		usage := f.Tag.Get("usage")
-
-		// env := strings.ToUpper(strings.Replace(name, "-", "_", -1))
-		switch f.Type.Kind().String() {
-		default:
-			// set env
-			// flag.StringVar(any(ptr).(*string), name, any(value).(string), usage)
-		case "string":
-		case "int":
-			if sf.CanSet() {
-				flagSet.Var(&value{sf: sf, def: def}, name, usage)
-				env(sf, name)
+		if sf.CanSet() {
+			if err := env(sf, name); err != nil {
+				return err
 			}
+			flagSet.Var(&value{sf: sf, def: def}, name, usage)
 		}
 	}
+
+	return nil
 }
 
 func PrintDefaults(f *flag.FlagSet) {
 	f.VisitAll(func(flag *flag.Flag) {
+		val, ok := flag.Value.(Value)
+		if !ok {
+			return
+		}
+
 		var b strings.Builder
 		fmt.Fprintf(&b, "  -%s", flag.Name) // Two spaces before -; see next two comments.
 		usage := flag.Usage
 
-		val := flag.Value.(Value)
-		typ := val.Type()
+		typ := val.TypeInfo()
 
 		// name, usage := UnquoteUsage(flag)
 		if len(typ) > 0 {
@@ -164,9 +157,10 @@ func PrintDefaults(f *flag.FlagSet) {
 		}
 		b.WriteString(strings.ReplaceAll(usage, "\n", "\n    \t"))
 
-		// Print the default value only if it differs to the zero value
-		// for this flag type.
-		fmt.Fprintf(&b, " (default %v)", val.DefaultValue())
+		defaultValue := val.DefaultValue()
+		if defaultValue != "" {
+			fmt.Fprintf(&b, " (default %v)", defaultValue)
+		}
 		fmt.Fprint(f.Output(), b.String(), "\n")
 	})
 }

@@ -30,6 +30,7 @@ type Record struct {
 
 var (
 	Version       string
+	PrintVersion  bool
 	BuildTime     string
 	ConfigPath    = "config/config.json"
 	DefaultConfig = Configuration{

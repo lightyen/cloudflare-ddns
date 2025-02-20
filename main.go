@@ -52,6 +52,11 @@ func main() {
 		return
 	}
 
+	if config.PrintVersion {
+		fmt.Println(config.Version)
+		return
+	}
+
 	log.Open(log.Options{})
 	defer func() {
 		if err := log.Close(); err != nil {
