@@ -1,49 +1,58 @@
 package settings
 
 import (
+	"encoding/json"
+	"errors"
+	"io"
 	"os"
+	"path/filepath"
 )
-
-type Preferences struct {
-	ServePort      int    `json:"http" yaml:"http" usage:"server port"`
-	ServeTLSPort   int    `json:"https" yaml:"https"`
-	TLSCertificate string `json:"tls-cert" yaml:"tls-cert"`
-	TLSKey         string `json:"tls-key" yaml:"tls-key"`
-	TLSPfx         string `json:"tls-pfx" yaml:"tls-pfx"`
-
-	WebRoot       string `json:"www" yaml:"www"`
-	DataDirectory string `json:"data" yaml:"data"`
-
-	Email      string   `json:"email" yaml:"email"`
-	Token      string   `json:"token" yaml:"token"`
-	ZoneID     string   `json:"zone" yaml:"zone"`
-	Records    []Record `json:"records" yaml:"records"`
-	StaticIPv6 string   `json:"static_ipv6" yaml:"static_ipv6"`
-}
-
-type Record struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Proxied bool   `json:"proxied"`
-}
 
 var (
-	Version       string
-	PrintVersion  bool
-	BuildTime     string
-	ConfigPath    = "config/config.json"
-	DefaultConfig = Preferences{
-		ServePort:     80,
-		ServeTLSPort:  443,
-		WebRoot:       "www",
-		DataDirectory: "data",
-	}
+	configExts = []string{".json"}
 )
 
-func init() {
-	if v, exists := os.LookupEnv("CONFIG"); exists {
-		if v != "" {
-			ConfigPath = v
+func ConfigPath() string {
+	v, exists := os.LookupEnv("CONFIG")
+	if exists {
+		return v
+	}
+	return DefaultConfigPath
+}
+
+func readConfigFile(filename string) (config Preferences, path string, err error) {
+	config = DefaultConfig
+
+	p := filepath.Clean(filename)
+	dir, name, ext := filepath.Dir(p), filepath.Base(p), filepath.Ext(p)
+	if len(name) > len(ext) {
+		name = name[:len(name)-len(ext)]
+	}
+
+	for _, ext := range configExts {
+		target := filepath.Join(dir, name+ext)
+		f, err := os.Open(target)
+		if err != nil {
+			continue
+		}
+
+		buf := make([]byte, 4096)
+		n, err := f.Read(buf)
+		if err != nil && !errors.Is(err, io.EOF) {
+			continue
+		}
+
+		switch ext {
+		case ".yml", ".yaml":
+			return config, "", errors.ErrUnsupported
+		case ".json":
+			if err := json.Unmarshal(buf[:n], &config); err != nil {
+				return config, target, err
+			}
+			return config, target, nil
 		}
 	}
+
+	err = os.ErrNotExist
+	return
 }

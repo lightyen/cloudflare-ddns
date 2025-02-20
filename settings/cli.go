@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func FlagParse() error {
@@ -21,6 +23,7 @@ func FlagParse() error {
 		printDefaults(f)
 	}
 
+	f.Var(&loglevel{}, "log-level", "the level of log messages (debug|info|warn|error|dpanic|panic|fatal)")
 	f.BoolVar(&PrintVersion, "v", false, "print version")
 	f.BoolVar(&PrintVersion, "version", false, "print version")
 
@@ -29,21 +32,35 @@ func FlagParse() error {
 		return err
 	}
 
+	if v, exists := os.LookupEnv("LOG_LEVEL"); exists {
+		if err := LogLevel.Set(v); err != nil {
+			fmt.Println(err)
+			return err
+		}
+	}
+
 	if err := f.Parse(os.Args[1:]); err != nil {
 		return err
+	}
+
+	if PrintVersion {
+		fmt.Println(Version)
+		return errors.New("show version")
 	}
 
 	preferences.Store(m)
 	return nil
 }
 
-func jsonTagName(f reflect.StructField) string {
-	k := f.Tag.Get("json")
-	index := strings.Index(k, ",")
-	if index < 0 {
-		return strings.TrimSpace(k)
+func structTag(f reflect.StructField, key string) (string, []string) {
+	s := strings.Split(f.Tag.Get(key), ",")
+	for i := range s {
+		s[i] = strings.TrimSpace(s[i])
 	}
-	return strings.TrimSpace(k[0:index])
+	if len(s) > 0 {
+		return s[0], s[1:]
+	}
+	return "", nil
 }
 
 func env(f reflect.Value, name string) error {
@@ -61,54 +78,6 @@ func env(f reflect.Value, name string) error {
 	return err
 }
 
-type iValue interface {
-	String() string
-	Set(string) (err error)
-	TypeInfo() string
-	DefaultValue() string
-}
-
-var _ iValue = &value{}
-
-type value struct {
-	sf  reflect.Value
-	def reflect.Value
-}
-
-func (i *value) Set(s string) error {
-	v, err := parseValue(i.sf, s)
-	if err != nil {
-		if errors.Is(err, strconv.ErrSyntax) {
-			return strconv.ErrSyntax
-		}
-		if errors.Is(err, strconv.ErrRange) {
-			return strconv.ErrRange
-		}
-		return err
-	}
-	i.sf.Set(reflect.ValueOf(v))
-	return nil
-}
-
-func (i *value) String() string {
-	return i.DefaultValue()
-}
-
-func (i *value) TypeInfo() string {
-	return i.sf.Type().String()
-}
-
-func (i *value) DefaultValue() string {
-	if i.def.IsValid() && !i.def.IsZero() && i.def.CanInterface() {
-		v := i.def.Interface()
-		if s, ok := v.(string); ok {
-			return strconv.Quote(s)
-		}
-		return fmt.Sprint(v)
-	}
-	return ""
-}
-
 func loadEnvFlags(flagSet *flag.FlagSet, conf *Preferences) error {
 	t := reflect.TypeOf(conf).Elem()
 	v := reflect.ValueOf(conf).Elem()
@@ -118,11 +87,24 @@ func loadEnvFlags(flagSet *flag.FlagSet, conf *Preferences) error {
 		f := t.Field(i)
 		sf := v.Field(i)
 		def := d.Field(i)
-		name := jsonTagName(f)
-		usage := f.Tag.Get("usage")
+		usage, _ := structTag(f, "usage")
+		jsonKey, _ := structTag(f, "json")
+		cli, cliOptions := structTag(f, "cli")
 
-		switch name {
-		case "records":
+		if slices.Contains(cliOptions, "ignored") {
+			continue
+		}
+
+		if jsonKey == "" {
+			continue
+		}
+
+		name := cli
+		if name == "" {
+			name = strings.Replace(jsonKey, "_", "-", -1)
+		}
+
+		if name == "" {
 			continue
 		}
 
@@ -173,4 +155,120 @@ func printDefaults(f *flag.FlagSet) {
 		}
 		fmt.Fprint(f.Output(), b.String(), "\n")
 	})
+}
+
+func parseValue(f reflect.Value, s string) (v any, err error) {
+	switch f.Kind().String() {
+	default:
+		err = errors.ErrUnsupported
+	case "string":
+		v = s
+	case "bool":
+		v, err = strconv.ParseBool(s)
+	case "int":
+		v, err = strconv.Atoi(s)
+	case "int8":
+		var n int64
+		n, err = strconv.ParseInt(s, 0, 8)
+		v = int8(n)
+	case "int16":
+		var n int64
+		n, err = strconv.ParseInt(s, 0, 16)
+		v = int16(n)
+	case "int32":
+		var n int64
+		n, err = strconv.ParseInt(s, 0, 32)
+		v = int32(n)
+	case "int64":
+		v, err = strconv.ParseInt(s, 0, 64)
+	case "uint":
+	case "uint8":
+		var n uint64
+		n, err = strconv.ParseUint(s, 0, 8)
+		v = uint8(n)
+	case "uint16":
+		var n uint64
+		n, err = strconv.ParseUint(s, 0, 16)
+		v = uint16(n)
+	case "uint32":
+		var n uint64
+		n, err = strconv.ParseUint(s, 0, 32)
+		v = uint32(n)
+	case "uint64":
+		v, err = strconv.ParseUint(s, 0, 64)
+	case "float32":
+		var n float64
+		n, err = strconv.ParseFloat(s, 32)
+		v = float32(n)
+	case "float64":
+		v, err = strconv.ParseFloat(s, 64)
+	case "time.Duration":
+		v, err = time.ParseDuration(s)
+	}
+	return
+}
+
+type iValue interface {
+	String() string
+	Set(string) (err error)
+	TypeInfo() string
+	DefaultValue() string
+}
+
+var _ iValue = &value{}
+
+type value struct {
+	sf  reflect.Value
+	def reflect.Value
+}
+
+func (i *value) Set(s string) error {
+	v, err := parseValue(i.sf, s)
+	if err != nil {
+		if errors.Is(err, strconv.ErrSyntax) {
+			return strconv.ErrSyntax
+		}
+		if errors.Is(err, strconv.ErrRange) {
+			return strconv.ErrRange
+		}
+		return err
+	}
+	i.sf.Set(reflect.ValueOf(v))
+	return nil
+}
+
+func (i *value) String() string {
+	return i.DefaultValue()
+}
+
+func (i *value) TypeInfo() string {
+	return i.sf.Type().String()
+}
+
+func (i *value) DefaultValue() string {
+	if i.def.IsValid() && !i.def.IsZero() && i.def.CanInterface() {
+		v := i.def.Interface()
+		if s, ok := v.(string); ok {
+			return strconv.Quote(s)
+		}
+		return fmt.Sprint(v)
+	}
+	return ""
+}
+
+type loglevel struct {
+}
+
+func (v *loglevel) Set(s string) error {
+	return LogLevel.Set(s)
+}
+
+func (v *loglevel) String() string {
+	return v.DefaultValue()
+}
+func (v *loglevel) TypeInfo() string {
+	return reflect.TypeOf(LogLevel).String()
+}
+func (v *loglevel) DefaultValue() string {
+	return ""
 }

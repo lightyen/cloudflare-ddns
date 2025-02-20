@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/lightyen/cloudflare-ddns/settings"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -13,20 +14,12 @@ import (
 const DefaultLogName = "logs/messages.log"
 
 var (
-	LogLevel zapcore.Level
-
 	filename string
 	opts     Options
 	logger   *zap.Logger
 	sugar    *zap.SugaredLogger
 	w        *LogrotateWriter
 )
-
-func init() {
-	if v, exists := os.LookupEnv("LOG_LEVEL"); exists {
-		_ = LogLevel.Set(v)
-	}
-}
 
 type LogEntry struct {
 	Level   zapcore.Level `json:"level"`
@@ -79,7 +72,7 @@ func Open(options Options) {
 
 	if opts.Mode == Stdout {
 		c := zap.NewProductionConfig()
-		c.Level = zap.NewAtomicLevelAt(LogLevel)
+		c.Level = zap.NewAtomicLevelAt(settings.LogLevel)
 		c.OutputPaths = []string{"stdout"}
 		c.Encoding = "console"
 		c.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
@@ -106,7 +99,7 @@ func Open(options Options) {
 	encoderConfig.StacktraceKey = zapcore.OmitKey
 	enc, ws := zapcore.NewJSONEncoder(encoderConfig), zapcore.AddSync(w)
 
-	v := zap.New(zapcore.NewCore(enc, ws, LogLevel))
+	v := zap.New(zapcore.NewCore(enc, ws, settings.LogLevel))
 	logger = v
 	sugar = v.Sugar()
 }

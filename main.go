@@ -49,11 +49,7 @@ func write(h hash.Hash, filename string) {
 func main() {
 	settings.Load()
 	if err := settings.FlagParse(); err != nil {
-		return
-	}
-
-	if settings.PrintVersion {
-		fmt.Println(settings.Version)
+		// none
 		return
 	}
 
@@ -75,7 +71,7 @@ func main() {
 	defer f.Close()
 
 	h := sha1.New()
-	if err := f.AddWatch(settings.ConfigPath, Remove|Rename|Create|CloseWrite); err != nil {
+	if err := f.AddWatch(settings.ConfigPath(), Remove|Rename|Create|CloseWrite); err != nil {
 		log.Error(err)
 		return
 	}
