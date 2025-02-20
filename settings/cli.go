@@ -10,9 +10,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.uber.org/zap/zapcore"
+)
+
+var (
+	ErrShowVersion = errors.New("show version")
+	LogLevel       zapcore.Level
 )
 
 func FlagParse() error {
+	var printVersion bool
+
 	f := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	f.Usage = func() {
 		if f.Name() == "" {
@@ -24,8 +33,8 @@ func FlagParse() error {
 	}
 
 	f.Var(&loglevel{}, "log-level", "the level of log messages (debug|info|warn|error|dpanic|panic|fatal)")
-	f.BoolVar(&PrintVersion, "v", false, "print version")
-	f.BoolVar(&PrintVersion, "version", false, "print version")
+	f.BoolVar(&printVersion, "v", false, "print version")
+	f.BoolVar(&printVersion, "version", false, "print version")
 
 	m := Value()
 	if err := loadEnvFlags(f, &m); err != nil {
@@ -34,7 +43,7 @@ func FlagParse() error {
 
 	if v, exists := os.LookupEnv("LOG_LEVEL"); exists {
 		if err := LogLevel.Set(v); err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(f.Output(), err)
 			return err
 		}
 	}
@@ -43,12 +52,12 @@ func FlagParse() error {
 		return err
 	}
 
-	if PrintVersion {
-		fmt.Println(Version)
-		return errors.New("show version")
+	if printVersion {
+		fmt.Fprintln(f.Output(), Version)
+		return ErrShowVersion
 	}
 
-	preferences.Store(m)
+	value.Store(m)
 	return nil
 }
 
@@ -78,10 +87,10 @@ func env(f reflect.Value, name string) error {
 	return err
 }
 
-func loadEnvFlags(flagSet *flag.FlagSet, conf *Preferences) error {
+func loadEnvFlags(flagSet *flag.FlagSet, conf *Settings) error {
 	t := reflect.TypeOf(conf).Elem()
 	v := reflect.ValueOf(conf).Elem()
-	d := reflect.ValueOf(&DefaultConfig).Elem()
+	d := reflect.ValueOf(&Default).Elem()
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -112,7 +121,7 @@ func loadEnvFlags(flagSet *flag.FlagSet, conf *Preferences) error {
 			if err := env(sf, name); err != nil {
 				return err
 			}
-			flagSet.Var(&value{sf: sf, def: def}, name, usage)
+			flagSet.Var(&anyValue{sf: sf, def: def}, name, usage)
 		}
 	}
 
@@ -215,14 +224,14 @@ type iValue interface {
 	DefaultValue() string
 }
 
-var _ iValue = &value{}
+var _ iValue = &anyValue{}
 
-type value struct {
+type anyValue struct {
 	sf  reflect.Value
 	def reflect.Value
 }
 
-func (i *value) Set(s string) error {
+func (i *anyValue) Set(s string) error {
 	v, err := parseValue(i.sf, s)
 	if err != nil {
 		if errors.Is(err, strconv.ErrSyntax) {
@@ -237,15 +246,15 @@ func (i *value) Set(s string) error {
 	return nil
 }
 
-func (i *value) String() string {
+func (i *anyValue) String() string {
 	return i.DefaultValue()
 }
 
-func (i *value) TypeInfo() string {
+func (i *anyValue) TypeInfo() string {
 	return i.sf.Type().String()
 }
 
-func (i *value) DefaultValue() string {
+func (i *anyValue) DefaultValue() string {
 	if i.def.IsValid() && !i.def.IsZero() && i.def.CanInterface() {
 		v := i.def.Interface()
 		if s, ok := v.(string); ok {

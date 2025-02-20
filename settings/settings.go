@@ -2,11 +2,9 @@ package settings
 
 import (
 	"sync/atomic"
-
-	"go.uber.org/zap/zapcore"
 )
 
-type Preferences struct {
+type Settings struct {
 	ServePort      int    `json:"http" yaml:"http" usage:"server port"`
 	ServeTLSPort   int    `json:"https" yaml:"https"`
 	TLSCertificate string `json:"tls_cert" yaml:"tls_cert"`
@@ -30,12 +28,9 @@ type Record struct {
 }
 
 var (
-	Version           string
-	PrintVersion      bool
-	BuildTime         string
-	DefaultConfigPath = "config/config.json"
-	LogLevel          zapcore.Level
-	DefaultConfig     = Preferences{
+	Version   string
+	BuildTime string
+	Default   = Settings{
 		ServePort:     80,
 		ServeTLSPort:  443,
 		WebRoot:       "www",
@@ -44,15 +39,15 @@ var (
 )
 
 var (
-	preferences atomic.Value
+	value atomic.Value
 )
 
 func Load() error {
 	m, _, err := readConfigFile(ConfigPath())
-	preferences.Store(m)
+	value.Store(m)
 	return err
 }
 
-func Value() Preferences {
-	return preferences.Load().(Preferences)
+func Value() Settings {
+	return value.Load().(Settings)
 }

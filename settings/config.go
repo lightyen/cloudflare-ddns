@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 )
 
+const DefaultConfigPath = "config/config.json"
+
 var (
 	configExts = []string{".json"}
 )
@@ -20,8 +22,8 @@ func ConfigPath() string {
 	return DefaultConfigPath
 }
 
-func readConfigFile(filename string) (config Preferences, path string, err error) {
-	config = DefaultConfig
+func readConfigFile(filename string) (config Settings, path string, err error) {
+	config = Default
 
 	p := filepath.Clean(filename)
 	dir, name, ext := filepath.Dir(p), filepath.Base(p), filepath.Ext(p)
