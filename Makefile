@@ -25,9 +25,11 @@ endif
 NAME := cloudflare-ddns
 IMAGE_NAME := ${NAME}
 
+DATE := $(shell date --rfc-3339=seconds)
+
 GO_FLAGS := "-tags=nomsgpack"
 
-LDFLAGS := -s -w -X github.com/lightyen/${NAME}/config.Version=${VERSION}
+LDFLAGS := -s -w -X 'github.com/lightyen/${NAME}/config.Version=${VERSION}' -X 'github.com/lightyen/${NAME}/config.BuildTime=${DATE}'
 
 all: binary
 

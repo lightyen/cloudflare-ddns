@@ -48,10 +48,7 @@ func write(h hash.Hash, filename string) {
 
 func main() {
 	config.Load()
-
-	err := config.FlagParse()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	if err := config.FlagParse(); err != nil {
 		return
 	}
 

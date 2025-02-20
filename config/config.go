@@ -6,7 +6,7 @@ import (
 )
 
 type Configuration struct {
-	ServePort      int    `json:"http" yaml:"http"`
+	ServePort      int    `json:"http" yaml:"http" usage:"server port"`
 	ServeTLSPort   int    `json:"https" yaml:"https"`
 	TLSCertificate string `json:"tls-cert" yaml:"tls-cert"`
 	TLSKey         string `json:"tls-key" yaml:"tls-key"`
@@ -30,6 +30,7 @@ type Record struct {
 
 var (
 	Version       string
+	BuildTime     string
 	ConfigPath    = "config/config.json"
 	DefaultConfig = Configuration{
 		ServePort:     80,
