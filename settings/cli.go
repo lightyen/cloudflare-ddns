@@ -18,7 +18,7 @@ func FlagParse() error {
 		} else {
 			fmt.Fprintf(f.Output(), "Usage of %s:\n", f.Name())
 		}
-		PrintDefaults(f)
+		printDefaults(f)
 	}
 
 	f.BoolVar(&PrintVersion, "v", false, "print version")
@@ -33,7 +33,7 @@ func FlagParse() error {
 		return err
 	}
 
-	configuration.Store(m)
+	preferences.Store(m)
 	return nil
 }
 
@@ -137,7 +137,7 @@ func loadEnvFlags(flagSet *flag.FlagSet, conf *Preferences) error {
 	return nil
 }
 
-func PrintDefaults(f *flag.FlagSet) {
+func printDefaults(f *flag.FlagSet) {
 	f.VisitAll(func(flag *flag.Flag) {
 		val, ok := flag.Value.(iValue)
 		if !ok {

@@ -13,19 +13,19 @@ import (
 )
 
 var (
-	configuration   atomic.Value
 	ErrRecordFormat = errors.New("wrong record format")
+	preferences     atomic.Value
 	configExts      = []string{".json"}
 )
 
 func Value() Preferences {
-	return configuration.Load().(Preferences)
+	return preferences.Load().(Preferences)
 }
 
 func Load() error {
 	ConfigPath = filepath.Clean(ConfigPath)
 	m, _, err := ReadConfigFile(ConfigPath)
-	configuration.Store(m)
+	preferences.Store(m)
 	return err
 }
 
