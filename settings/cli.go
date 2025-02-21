@@ -17,11 +17,10 @@ import (
 var (
 	ErrShowVersion = errors.New("show version")
 	LogLevel       zapcore.Level
+	printVersion   bool
 )
 
 func FlagParse() error {
-	var printVersion bool
-
 	f := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	f.Usage = func() {
 		if f.Name() == "" {
@@ -33,8 +32,8 @@ func FlagParse() error {
 	}
 
 	f.Var(&loglevel{}, "log-level", "the level of log messages (debug|info|warn|error|dpanic|panic|fatal)")
-	f.BoolVar(&printVersion, "v", false, "print version")
-	f.BoolVar(&printVersion, "version", false, "print version")
+	f.Var(&versionValue{}, "v", "print version")
+	f.Var(&versionValue{}, "version", "print version")
 
 	m := Value()
 	if err := loadEnvFlags(f, &m); err != nil {
@@ -283,9 +282,47 @@ func (v *loglevel) Set(s string) error {
 func (v *loglevel) String() string {
 	return v.DefaultValue()
 }
+
 func (v *loglevel) TypeInfo() string {
 	return reflect.TypeOf(LogLevel).String()
 }
+
 func (v *loglevel) DefaultValue() string {
 	return ""
+}
+
+type versionValue struct {
+}
+
+func (i *versionValue) Set(s string) error {
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		if errors.Is(err, strconv.ErrSyntax) {
+			return strconv.ErrSyntax
+		}
+		if errors.Is(err, strconv.ErrRange) {
+			return strconv.ErrRange
+		}
+		return err
+	}
+	if !printVersion {
+		printVersion = v
+	}
+	return nil
+}
+
+func (i *versionValue) String() string {
+	return i.DefaultValue()
+}
+
+func (i *versionValue) IsBoolFlag() bool {
+	return true
+}
+
+func (i *versionValue) TypeInfo() string {
+	return "bool"
+}
+
+func (i *versionValue) DefaultValue() string {
+	return "false"
 }
