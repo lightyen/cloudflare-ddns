@@ -16,6 +16,7 @@ import (
 
 var (
 	ErrShowVersion = errors.New("show version")
+	ErrHelp        = flag.ErrHelp
 	LogLevel       zapcore.Level
 	printVersion   bool
 )
@@ -42,7 +43,7 @@ func FlagParse() error {
 
 	if v, exists := os.LookupEnv("LOG_LEVEL"); exists {
 		if err := LogLevel.Set(v); err != nil {
-			fmt.Fprintln(f.Output(), err)
+			fmt.Fprintln(os.Stderr, err)
 			return err
 		}
 	}
@@ -52,7 +53,7 @@ func FlagParse() error {
 	}
 
 	if printVersion {
-		fmt.Fprintln(f.Output(), Version)
+		fmt.Fprintln(os.Stdout, Version)
 		return ErrShowVersion
 	}
 

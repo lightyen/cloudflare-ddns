@@ -49,7 +49,7 @@ func write(h hash.Hash, filename string) {
 func main() {
 	settings.Load()
 	if err := settings.FlagParse(); err != nil {
-		if errors.Is(err, settings.ErrShowVersion) {
+		if errors.Is(err, settings.ErrShowVersion) || errors.Is(err, settings.ErrHelp) {
 			return
 		}
 		os.Exit(1)
