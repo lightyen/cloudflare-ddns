@@ -191,6 +191,10 @@ func parseValue(f reflect.Value, s string) (v any, err error) {
 	case "int64":
 		v, err = strconv.ParseInt(s, 0, 64)
 	case "uint":
+		strconv.ParseUint(s, 0, strconv.IntSize)
+		var n uint64
+		n, err = strconv.ParseUint(s, 0, 8)
+		v = uint(n)
 	case "uint8":
 		var n uint64
 		n, err = strconv.ParseUint(s, 0, 8)
