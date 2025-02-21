@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -37,7 +38,11 @@ var (
 	appCtx, appExit = context.WithCancelCause(context.Background())
 )
 
-func write(h hash.Hash, filename string) {
+func write(h hash.Hash, data []byte) {
+	io.Copy(h, bytes.NewReader(data))
+}
+
+func writeFile(h hash.Hash, filename string) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return
@@ -90,7 +95,13 @@ func main() {
 	}
 
 	for _, s := range f.Watched() {
-		write(h, s)
+		if s == settings.ConfigPath() {
+			m, _ := settings.ReadConfigFile()
+			data, _ := json.Marshal(m)
+			write(h, data)
+			continue
+		}
+		writeFile(h, s)
 	}
 
 	hash := h.Sum(nil)
@@ -140,14 +151,17 @@ func main() {
 			go func(ctx context.Context) {
 				defer wg.Done()
 				server.New().Run(ctx)
-				if exit := errors.Is(context.Cause(ctx), ErrTerminated); exit {
-					log.Error(context.Cause(ctx))
-				} else if err := context.Cause(ctx); err != nil {
+				err := context.Cause(ctx)
+				if errors.Is(err, ErrTerminated) {
+					log.Error(err)
+				} else if errors.Is(err, ErrConfigChanged) {
+					//
+				} else if err != nil {
 					log.Info("server restart because:", err.Error())
 				}
 			}(ctx)
 		case <-changed:
-			if err := settings.Load(); err != nil && errors.Is(err, fs.ErrNotExist) {
+			if err := settings.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				log.Error(err)
 			}
 			if err := settings.FlagParse(); err != nil {
@@ -156,7 +170,13 @@ func main() {
 
 			h := sha1.New()
 			for _, s := range f.Watched() {
-				write(h, s)
+				if s == settings.ConfigPath() {
+					m, _ := settings.ReadConfigFile()
+					data, _ := json.Marshal(m)
+					write(h, data)
+					continue
+				}
+				writeFile(h, s)
 			}
 			b := h.Sum(nil)
 

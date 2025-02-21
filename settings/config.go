@@ -22,6 +22,11 @@ func ConfigPath() string {
 	return DefaultConfigPath
 }
 
+func ReadConfigFile() (config Settings, err error) {
+	config, _, err = readConfigFile(ConfigPath())
+	return
+}
+
 func readConfigFile(filename string) (config Settings, path string, err error) {
 	config = Default
 
