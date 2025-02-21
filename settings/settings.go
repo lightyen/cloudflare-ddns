@@ -44,10 +44,10 @@ var (
 
 func Load() error {
 	m, _, err := readConfigFile(ConfigPath())
-	value.Store(m)
+	value.Store(&m)
 	return err
 }
 
-func Value() Settings {
-	return value.Load().(Settings)
+func Value() *Settings {
+	return value.Load().(*Settings)
 }

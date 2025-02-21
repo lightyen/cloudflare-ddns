@@ -35,7 +35,7 @@ func FlagParse() error {
 	f.Var(&versionValue{}, "v", "print version")
 	f.Var(&versionValue{}, "version", "print version")
 
-	m := Value()
+	m := *Value()
 	if err := loadEnvFlags(f, &m); err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func FlagParse() error {
 		return ErrShowVersion
 	}
 
-	value.Store(m)
+	value.Store(&m)
 	return nil
 }
 
