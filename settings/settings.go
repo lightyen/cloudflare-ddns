@@ -19,6 +19,8 @@ type Settings struct {
 	ZoneID     string   `json:"zone" yaml:"zone"`
 	Records    []Record `json:"records" yaml:"records" cli:",ignored"`
 	StaticIPv6 string   `json:"static_ipv6" yaml:"static_ipv6"`
+
+	EnableAccessLog bool `json:"enable_access_log" usage:"enable access log"`
 }
 
 type Record struct {

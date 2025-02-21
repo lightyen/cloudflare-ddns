@@ -250,6 +250,10 @@ func (i *anyValue) String() string {
 	return i.DefaultValue()
 }
 
+func (i *anyValue) IsBoolFlag() bool {
+	return i.sf.Type().Kind() == reflect.Bool
+}
+
 func (i *anyValue) TypeInfo() string {
 	return i.sf.Type().String()
 }
